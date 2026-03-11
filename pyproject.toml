@@ -1,25 +1,38 @@
 [project]
 name = "smarttour"
 version = "0.1.0"
-description = ""
+description = "SmartTour travel planning PoC with FastAPI and Streamlit."
 readme = "README.md"
 requires-python = ">=3.12.12"
 dependencies = [
-    "torch>=2.10.0",
-    "torchvision>=0.25.0",
+    "fastapi[standard]>=0.115.0",
+    "folium>=0.18.0",
+    "googlemaps>=4.10.0",
+    "httpx>=0.28.0",
+    "openai>=1.60.0",
+    "ortools>=9.11",
+    "pydantic-settings>=2.0",
+    "sqlmodel>=0.0.24",
+    "streamlit>=1.40.0",
+    "streamlit-folium>=0.22.0",
+    "uvicorn[standard]>=0.34.0",
 ]
 
 [project.scripts]
-
+seed-database = "scripts.seed_database:main"
 
 [project.optional-dependencies]
 dev = [
     "mypy>=1.18.2",
+    "pytest>=8.4.2",
     "ruff>=0.14.6"
 ]
 
 [tool.setuptools]
-packages = ["scripts"]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["scripts*", "smarttour*"]
 
 [build-system]
 requires = ["setuptools>=45", "wheel"]
@@ -34,21 +47,10 @@ required-environments = [
 exclude = ["docs"]
 
 [tool.ruff.lint]
-select = ["E","F","UP","B","SIM","I"]
+select = ["E", "F", "UP", "B", "SIM", "I"]
+ignore = ["E501"]
 
 [tool.mypy]
 disable_error_code = ["import-untyped"]
 exclude = ["docs"]
-
-[[tool.uv.index]]
-name = "pytorch-cu130"
-url = "https://download.pytorch.org/whl/cu130"
-explicit = true
-
-[tool.uv.sources]
-torch = [
-  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-]
-torchvision = [
-  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-]
+python_version = "3.12"

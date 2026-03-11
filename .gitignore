@@ -4,8 +4,10 @@
 /.vscode
 /*.egg-info
 /backup
+/datas
 /docs
 /tests
+/.env
 /AGENTS.md
 /CLAUDE.md
 __pycache__
