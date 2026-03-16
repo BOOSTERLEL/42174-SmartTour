@@ -23,7 +23,14 @@ def _build_markdown(planning_session) -> str:
     for day in itinerary.days:
         lines.append(f"## {day.label}")
         for slot in day.slots:
-            lines.append(f"- {slot.start_time}-{slot.end_time}: {slot.title}")
+            slot_label = slot.slot_type.replace("_", " ").title()
+            lines.append(
+                f"- {slot.start_time}-{slot.end_time}: {slot_label} at {slot.title}"
+            )
+            if slot.transport_from_previous is not None:
+                lines.append(
+                    f"  Navigation: {slot.transport_from_previous.navigation_hint}"
+                )
         lines.append("")
     return "\n".join(lines)
 

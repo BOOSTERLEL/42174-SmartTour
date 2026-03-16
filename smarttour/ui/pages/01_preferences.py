@@ -60,8 +60,16 @@ if preferences is not None:
         )
         travel_mode = st.selectbox(
             "Travel mode",
-            ["walking", "transit", "driving"],
-            index=["walking", "transit", "driving"].index(preferences.travel_mode),
+            ["walking_transit", "walking", "transit", "driving"],
+            index=["walking_transit", "walking", "transit", "driving"].index(
+                preferences.travel_mode
+            ),
+            format_func=lambda item: {
+                "walking_transit": "Walking + Transit",
+                "walking": "Walking",
+                "transit": "Transit",
+                "driving": "Driving",
+            }[item],
         )
         pace = st.selectbox(
             "Pace",

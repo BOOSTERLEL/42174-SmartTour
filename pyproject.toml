@@ -11,6 +11,7 @@ dependencies = [
     "httpx>=0.28.0",
     "openai>=1.60.0",
     "ortools>=9.11",
+    "python-json-logger>=3.3.0",
     "pydantic-settings>=2.0",
     "sqlmodel>=0.0.24",
     "streamlit>=1.40.0",
@@ -54,3 +55,6 @@ ignore = ["E501"]
 disable_error_code = ["import-untyped"]
 exclude = ["docs"]
 python_version = "3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

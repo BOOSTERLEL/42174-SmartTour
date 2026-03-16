@@ -42,9 +42,9 @@ class LLMClient:
         """
 
         settings = get_settings()
-        self.model = model or settings.openai_model
-        self.base_url = base_url or settings.openai_base_url
-        self.api_key = api_key or settings.openai_api_key
+        self._model = model or settings.openai_model
+        self._base_url = base_url or settings.openai_base_url
+        self._api_key = api_key or settings.openai_api_key
 
     @property
     def enabled(self) -> bool:
@@ -55,7 +55,7 @@ class LLMClient:
             ``True`` when an API key is available.
         """
 
-        return bool(self.api_key)
+        return bool(self._api_key)
 
     def _get_client(self):
         """
@@ -72,7 +72,7 @@ class LLMClient:
             raise RuntimeError("LLM client is not configured: missing API key.")
         from openai import OpenAI
 
-        return OpenAI(api_key=self.api_key, base_url=self.base_url)
+        return OpenAI(api_key=self._api_key, base_url=self._base_url)
 
     def complete(self, system_prompt: str, user_prompt: str) -> str:
         """
@@ -91,7 +91,7 @@ class LLMClient:
 
         client = self._get_client()
         response = client.chat.completions.create(
-            model=self.model,
+            model=self._model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -127,6 +127,16 @@ class LLMClient:
             RuntimeError: When the client is not configured or parsing fails.
         """
 
+        logger.info(
+            "LLM parse: model=%s response_model=%s",
+            self._model,
+            response_model.__name__,
+        )
+        logger.debug(
+            "LLM prompt length: system=%d user=%d chars",
+            len(system_prompt),
+            len(user_prompt),
+        )
         schema = response_model.model_json_schema()
         schema_text = json.dumps(schema, indent=2)
         augmented_system = (

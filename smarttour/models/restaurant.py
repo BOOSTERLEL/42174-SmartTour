@@ -1,5 +1,5 @@
 """
-Attraction and guidance models.
+Restaurant models for itinerary meal planning.
 """
 
 from __future__ import annotations
@@ -10,42 +10,44 @@ from datetime import datetime
 from sqlalchemy import Column, DateTime, Float, Integer, Text
 from sqlmodel import Field, SQLModel
 
-from smarttour.models.preferences import TravelPreferences
 
-
-class Attraction(SQLModel):
+class Restaurant(SQLModel):
     """
-    Public attraction model.
+    Public restaurant model.
     """
 
     id: str
     name: str
     destination: str
-    category: str
+    cuisine: str
+    meal_types: list[str] = Field(default_factory=list)
     latitude: float
     longitude: float
     description: str = ""
     opening_hours: dict[str, str] = Field(default_factory=dict)
-    visit_duration: int = Field(default=90, ge=15)
-    cost: float = Field(default=0.0, ge=0.0)
+    average_cost: float = Field(default=0.0, ge=0.0)
+    visit_duration: int = Field(default=60, ge=15)
     rating: float = Field(default=0.0, ge=0.0, le=5.0)
-    accessibility: str | None = None
     tags: list[str] = Field(default_factory=list)
     image_url: str | None = None
     source: str = "seed"
 
 
-class AttractionRecord(SQLModel, table=True):
+class RestaurantRecord(SQLModel, table=True):
     """
-    SQLite table for attractions.
+    SQLite table for restaurants.
     """
 
-    __tablename__ = "attractions"
+    __tablename__ = "restaurants"
 
     id: str = Field(primary_key=True)
     name: str
     destination: str = Field(index=True)
-    category: str = Field(index=True)
+    cuisine: str = Field(index=True)
+    meal_types_json: str = Field(
+        default="[]",
+        sa_column=Column("meal_types", Text, nullable=False, default="[]"),
+    )
     latitude: float = Field(sa_column=Column(Float, nullable=False))
     longitude: float = Field(sa_column=Column(Float, nullable=False))
     description: str = Field(
@@ -55,17 +57,14 @@ class AttractionRecord(SQLModel, table=True):
         default="{}",
         sa_column=Column("opening_hours", Text, nullable=False, default="{}"),
     )
-    visit_duration: int = Field(
-        default=90, sa_column=Column(Integer, nullable=False, default=90)
-    )
-    cost: float = Field(
+    average_cost: float = Field(
         default=0.0, sa_column=Column(Float, nullable=False, default=0.0)
+    )
+    visit_duration: int = Field(
+        default=60, sa_column=Column(Integer, nullable=False, default=60)
     )
     rating: float = Field(
         default=0.0, sa_column=Column(Float, nullable=False, default=0.0)
-    )
-    accessibility: str | None = Field(
-        default=None, sa_column=Column(Text, nullable=True)
     )
     tags_json: str = Field(
         default="[]",
@@ -79,27 +78,27 @@ class AttractionRecord(SQLModel, table=True):
         default="seed", sa_column=Column(Text, nullable=False, default="seed")
     )
 
-    def to_model(self) -> Attraction:
+    def to_model(self) -> Restaurant:
         """
-        Convert the record into a public attraction model.
+        Convert the record into a public restaurant model.
 
         Returns:
-            The public attraction representation.
+            The public restaurant representation.
         """
 
-        return Attraction(
+        return Restaurant(
             id=self.id,
             name=self.name,
             destination=self.destination,
-            category=self.category,
+            cuisine=self.cuisine,
+            meal_types=json.loads(self.meal_types_json),
             latitude=self.latitude,
             longitude=self.longitude,
             description=self.description,
             opening_hours=json.loads(self.opening_hours_json),
+            average_cost=self.average_cost,
             visit_duration=self.visit_duration,
-            cost=self.cost,
             rating=self.rating,
-            accessibility=self.accessibility,
             tags=json.loads(self.tags_json),
             image_url=self.image_url,
             source=self.source,
@@ -108,64 +107,35 @@ class AttractionRecord(SQLModel, table=True):
     @classmethod
     def from_model(
         cls,
-        attraction: Attraction,
+        restaurant: Restaurant,
         fetched_at: datetime | None = None,
-    ) -> AttractionRecord:
+    ) -> RestaurantRecord:
         """
-        Create a database record from a public attraction model.
+        Create a database record from a public restaurant model.
 
         Args:
-            attraction: The attraction model to serialize.
+            restaurant: The restaurant model to serialize.
             fetched_at: Optional cache timestamp.
 
         Returns:
-            A database-ready attraction record.
+            A database-ready restaurant record.
         """
 
         return cls(
-            id=attraction.id,
-            name=attraction.name,
-            destination=attraction.destination,
-            category=attraction.category,
-            latitude=attraction.latitude,
-            longitude=attraction.longitude,
-            description=attraction.description,
-            opening_hours_json=json.dumps(attraction.opening_hours),
-            visit_duration=attraction.visit_duration,
-            cost=attraction.cost,
-            rating=attraction.rating,
-            accessibility=attraction.accessibility,
-            tags_json=json.dumps(attraction.tags),
-            image_url=attraction.image_url,
+            id=restaurant.id,
+            name=restaurant.name,
+            destination=restaurant.destination,
+            cuisine=restaurant.cuisine,
+            meal_types_json=json.dumps(restaurant.meal_types),
+            latitude=restaurant.latitude,
+            longitude=restaurant.longitude,
+            description=restaurant.description,
+            opening_hours_json=json.dumps(restaurant.opening_hours),
+            average_cost=restaurant.average_cost,
+            visit_duration=restaurant.visit_duration,
+            rating=restaurant.rating,
+            tags_json=json.dumps(restaurant.tags),
+            image_url=restaurant.image_url,
             fetched_at=fetched_at,
-            source=attraction.source,
+            source=restaurant.source,
         )
-
-
-class AttractionSearchResponse(SQLModel):
-    """
-    Attraction search response payload.
-    """
-
-    results: list[Attraction]
-    total: int
-
-
-class GuidanceRequest(SQLModel):
-    """
-    Payload for AI-style attraction guidance generation.
-    """
-
-    attraction_id: str
-    preferences: TravelPreferences | None = None
-
-
-class GuidanceResponse(SQLModel):
-    """
-    Generated attraction guidance.
-    """
-
-    attraction: Attraction
-    historical_background: str
-    visiting_tips: list[str] = Field(default_factory=list)
-    practical_notes: list[str] = Field(default_factory=list)

@@ -5,8 +5,9 @@ Accommodation models.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
-from sqlalchemy import Column, Float, Integer, Text
+from sqlalchemy import Column, DateTime, Float, Integer, Text
 from sqlmodel import Field, SQLModel
 
 
@@ -20,11 +21,13 @@ class Hotel(SQLModel):
     destination: str
     latitude: float
     longitude: float
+    description: str = ""
     price_per_night: float = Field(default=0.0, ge=0.0)
     star_rating: int = Field(default=3, ge=1, le=5)
     category: str = "hotel"
     amenities: list[str] = Field(default_factory=list)
     booking_url: str | None = None
+    source: str = "seed"
 
 
 class AccommodationOption(SQLModel):
@@ -47,6 +50,9 @@ class AccommodationRecord(SQLModel, table=True):
     destination: str = Field(index=True)
     latitude: float = Field(sa_column=Column(Float, nullable=False))
     longitude: float = Field(sa_column=Column(Float, nullable=False))
+    description: str = Field(
+        default="", sa_column=Column(Text, nullable=False, default="")
+    )
     price_per_night: float = Field(
         default=0.0, sa_column=Column(Float, nullable=False, default=0.0)
     )
@@ -61,6 +67,12 @@ class AccommodationRecord(SQLModel, table=True):
         sa_column=Column("amenities", Text, nullable=False, default="[]"),
     )
     booking_url: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    source: str = Field(
+        default="seed", sa_column=Column(Text, nullable=False, default="seed")
+    )
+    fetched_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
 
     def to_model(self) -> Hotel:
         """
@@ -76,20 +88,27 @@ class AccommodationRecord(SQLModel, table=True):
             destination=self.destination,
             latitude=self.latitude,
             longitude=self.longitude,
+            description=self.description,
             price_per_night=self.price_per_night,
             star_rating=self.star_rating,
             category=self.category,
             amenities=json.loads(self.amenities_json),
             booking_url=self.booking_url,
+            source=self.source,
         )
 
     @classmethod
-    def from_model(cls, hotel: Hotel) -> AccommodationRecord:
+    def from_model(
+        cls,
+        hotel: Hotel,
+        fetched_at: datetime | None = None,
+    ) -> AccommodationRecord:
         """
         Create a database record from a hotel model.
 
         Args:
             hotel: The hotel to serialize.
+            fetched_at: Optional cache timestamp.
 
         Returns:
             A database-ready accommodation record.
@@ -101,9 +120,12 @@ class AccommodationRecord(SQLModel, table=True):
             destination=hotel.destination,
             latitude=hotel.latitude,
             longitude=hotel.longitude,
+            description=hotel.description,
             price_per_night=hotel.price_per_night,
             star_rating=hotel.star_rating,
             category=hotel.category,
             amenities_json=json.dumps(hotel.amenities),
             booking_url=hotel.booking_url,
+            source=hotel.source,
+            fetched_at=fetched_at,
         )

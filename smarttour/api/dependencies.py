@@ -11,6 +11,7 @@ from smarttour.services import (
     DataRetrievalService,
     GuidanceGenerator,
     ItineraryGenerator,
+    ItineraryPlanner,
     MapsClient,
     PreferenceParser,
     RouteOptimizer,
@@ -72,6 +73,17 @@ def get_route_optimizer() -> RouteOptimizer:
     return RouteOptimizer()
 
 
+def get_itinerary_planner() -> ItineraryPlanner:
+    """
+    Return the itinerary planner service.
+
+    Returns:
+        An itinerary planner instance.
+    """
+
+    return ItineraryPlanner()
+
+
 def get_itinerary_generator() -> ItineraryGenerator:
     """
     Return the itinerary generator.
@@ -80,7 +92,12 @@ def get_itinerary_generator() -> ItineraryGenerator:
         An itinerary generator instance.
     """
 
-    return ItineraryGenerator()
+    return ItineraryGenerator(
+        data_retrieval=get_data_retrieval_service(),
+        maps_client=get_maps_client(),
+        route_optimizer=get_route_optimizer(),
+        planner=get_itinerary_planner(),
+    )
 
 
 def get_guidance_generator() -> GuidanceGenerator:

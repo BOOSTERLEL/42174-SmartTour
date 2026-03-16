@@ -24,7 +24,8 @@ SYSTEM_PROMPT = (
     "- budget_total: total budget as a number, 0.0 if not mentioned\n"
     "- interests: list of interest categories from "
     "[museum, park, food, shopping, landmark, wildlife, beach, nightlife, culture, sport]\n"
-    "- travel_mode: one of 'walking', 'transit', 'driving' (default 'walking')\n"
+    "- travel_mode: one of 'walking', 'transit', 'driving', 'walking_transit' "
+    "(default 'walking_transit')\n"
     "- pace: one of 'relaxed', 'balanced', 'packed' (default 'balanced')\n"
     "- travelers: number of travelers (default 1)\n"
     "- accessibility_needs: list of needs like 'wheelchair', 'family-friendly' (default empty)\n"
@@ -56,7 +57,7 @@ class LLMPreferenceOutput(BaseModel):
     trip_days: int = Field(default=3, ge=1, le=14)
     budget_total: float = Field(default=0.0, ge=0.0)
     interests: list[str] = Field(default_factory=list)
-    travel_mode: str = Field(default="walking")
+    travel_mode: str = Field(default="walking_transit")
     pace: str = Field(default="balanced")
     travelers: int = Field(default=1, ge=1, le=20)
     accessibility_needs: list[str] = Field(default_factory=list)
@@ -94,6 +95,10 @@ class PreferenceParser:
 
         normalized_text = text.strip()
         warnings: list[str] = []
+        logger.info(
+            "Parsing preferences from user input (%d chars)",
+            len(normalized_text),
+        )
 
         if self.llm_client.enabled:
             try:
@@ -103,8 +108,13 @@ class PreferenceParser:
                     response_model=LLMPreferenceOutput,
                 )
                 travel_mode = llm_output.travel_mode
-                if travel_mode not in ("walking", "transit", "driving"):
-                    travel_mode = "walking"
+                if travel_mode not in (
+                    "walking",
+                    "transit",
+                    "driving",
+                    "walking_transit",
+                ):
+                    travel_mode = "walking_transit"
                 pace = llm_output.pace
                 if pace not in ("relaxed", "balanced", "packed"):
                     pace = "balanced"
@@ -189,7 +199,12 @@ class PreferenceParser:
                     response_model=LLMPreferenceOutput,
                 )
                 travel_mode = llm_output.travel_mode
-                if travel_mode not in ("walking", "transit", "driving"):
+                if travel_mode not in (
+                    "walking",
+                    "transit",
+                    "driving",
+                    "walking_transit",
+                ):
                     travel_mode = base_preferences.travel_mode
                 pace = llm_output.pace
                 if pace not in ("relaxed", "balanced", "packed"):
@@ -329,6 +344,19 @@ class PreferenceParser:
         """
 
         lowered = text.lower()
+        if any(
+            token in lowered
+            for token in (
+                "walk + transit",
+                "walk and transit",
+                "walking and transit",
+                "walking + transit",
+                "walk + public transport",
+                "walking + public transport",
+                "mixed transport",
+            )
+        ):
+            return "walking_transit"
         if any(token in lowered for token in ("drive", "car", "driving")):
             return "driving"
         if any(
@@ -336,7 +364,9 @@ class PreferenceParser:
             for token in ("tram", "train", "bus", "public transport", "transit")
         ):
             return "transit"
-        return "walking"
+        if any(token in lowered for token in ("walk", "walking", "on foot")):
+            return "walking"
+        return "walking_transit"
 
     def _extract_pace(self, text: str) -> str:
         """

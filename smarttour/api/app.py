@@ -17,6 +17,7 @@ from smarttour.api.routers import (
 from smarttour.config import get_settings
 from smarttour.db import create_db_and_tables
 from smarttour.db.seed import seed_database
+from smarttour.logging_config import configure_logging
 
 
 @asynccontextmanager
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI):
     """
 
     _ = app
+    configure_logging()
     create_db_and_tables()
     seed_database()
     yield

@@ -19,6 +19,7 @@ class TransportSegment(SQLModel):
     travel_mode: Literal["walking", "transit", "driving"] = "walking"
     distance_m: int = Field(default=0, ge=0)
     duration_s: int = Field(default=0, ge=0)
+    navigation_hint: str = ""
     polyline: str | None = None
 
 
@@ -39,7 +40,9 @@ class RouteOptimizationRequest(SQLModel):
     """
 
     attractions: list[Attraction]
-    travel_mode: Literal["walking", "transit", "driving"] = "walking"
+    travel_mode: Literal["walking", "transit", "driving", "walking_transit"] = (
+        "walking_transit"
+    )
 
 
 class RouteOptimizationResponse(SQLModel):
