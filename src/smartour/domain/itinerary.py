@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -64,6 +65,8 @@ class PlaceRecommendation(BaseModel):
     user_rating_count: int | None = None
     price_level: str | None = None
     types: list[str] = Field(default_factory=list)
+    regular_opening_hours: dict[str, Any] | None = None
+    current_opening_hours: dict[str, Any] | None = None
     score: float = 0.0
 
 

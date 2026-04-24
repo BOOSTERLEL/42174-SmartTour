@@ -6,6 +6,8 @@ from smartour.application.planning_service import (
     PlanningService,
     _cluster_places,
     _cluster_theme,
+    _place_is_open_at,
+    _preferred_themes,
 )
 from smartour.core.errors import PlanningInputError
 from smartour.domain.conversation import Conversation
@@ -227,7 +229,14 @@ async def test_planning_service_generates_structured_itinerary() -> None:
     assert itinerary.days[0].route.duration_seconds == 3000
     assert routes_client.travel_modes == ["TRANSIT"] * 5
     assert routes_client.routing_preferences == [None] * 5
-    assert places_client.included_types == [None, "market", "museum", None]
+    assert places_client.included_types == [
+        None,
+        None,
+        "tourist_attraction",
+        "market",
+        "museum",
+        None,
+    ]
     assert service.get_itinerary(itinerary.id) is not None
 
 
@@ -326,6 +335,73 @@ def test_cluster_theme_treats_history_museums_as_heritage() -> None:
     assert _cluster_theme(places, requirement) == "heritage and landmarks"
 
 
+def test_cluster_theme_prefers_classic_for_symbolic_landmarks() -> None:
+    """
+    Verify that iconic mixed-type landmarks remain classic sightseeing.
+    """
+    requirement = _complete_requirement()
+    places = [
+        _recommendation(
+            "opera_1",
+            "Sydney Opera House",
+            "opera_house",
+            35.700,
+            139.740,
+            types=[
+                "performing_arts_theater",
+                "opera_house",
+                "concert_hall",
+                "auditorium",
+                "tourist_attraction",
+            ],
+        ),
+        _recommendation(
+            "bridge_1",
+            "Sydney Harbour Bridge",
+            "bridge",
+            35.705,
+            139.745,
+            types=["bridge", "tourist_attraction", "point_of_interest"],
+        ),
+    ]
+
+    assert _cluster_theme(places, requirement) == "classic sightseeing"
+
+
+def test_preferred_themes_reserve_classic_sightseeing_for_longer_trips() -> None:
+    """
+    Verify that longer trips reserve a first-visit sightseeing theme.
+    """
+    requirement = _complete_requirement().model_copy(
+        update={"trip_length_days": 3, "interests": ["food", "museums", "nature"]}
+    )
+
+    assert _preferred_themes(requirement, 3) == [
+        "classic sightseeing",
+        "arts and museums",
+        "parks and gardens",
+        "food and markets",
+    ]
+
+
+def test_place_is_open_at_uses_regular_opening_hours() -> None:
+    """
+    Verify that date-aware opening hours are evaluated by local weekday.
+    """
+    place = _recommendation(
+        "museum_1",
+        "Monday Museum",
+        "museum",
+        35.700,
+        139.740,
+        regular_opening_hours=_opening_hours(1, 10, 0, 1, 17, 0),
+    )
+
+    assert _place_is_open_at(place, "2026-04-27", "10:00")
+    assert not _place_is_open_at(place, "2026-04-27", "09:30")
+    assert not _place_is_open_at(place, "2026-04-26", "10:00")
+
+
 @pytest.mark.asyncio
 async def test_build_days_themes_actual_selected_attractions() -> None:
     """
@@ -408,6 +484,84 @@ async def test_build_days_themes_actual_selected_attractions() -> None:
     )
 
     assert [day.theme for day in days] == ["arts and museums", "parks and gardens"]
+
+
+@pytest.mark.asyncio
+async def test_build_days_avoids_closed_attractions_when_dates_exist() -> None:
+    """
+    Verify that dated plans prefer attractions open at scheduled visit times.
+    """
+    conversation_repository = InMemoryConversationRepository()
+    itinerary_repository = InMemoryItineraryRepository()
+    service = PlanningService(conversation_repository, itinerary_repository)
+    requirement = _complete_requirement().model_copy(
+        update={
+            "trip_dates": "2026-04-27 to 2026-04-27",
+            "trip_length_days": 1,
+            "interests": ["museums"],
+        }
+    )
+    primary_hotel = _recommendation(
+        "hotel_1", "Central Hotel", "hotel", 35.700, 139.740
+    )
+    attractions = [
+        _recommendation(
+            "closed_museum",
+            "Closed Museum",
+            "museum",
+            35.701,
+            139.741,
+            regular_opening_hours=_opening_hours(2, 10, 0, 2, 17, 0),
+        ),
+        _recommendation(
+            "open_museum",
+            "Open Museum",
+            "museum",
+            35.702,
+            139.742,
+            regular_opening_hours=_opening_hours(1, 10, 0, 1, 17, 0),
+        ),
+    ]
+    restaurants = [
+        _recommendation(
+            "restaurant_1",
+            "Open Lunch",
+            "restaurant",
+            35.703,
+            139.743,
+            types=["restaurant", "point_of_interest"],
+            regular_opening_hours=_opening_hours(1, 12, 0, 1, 22, 0),
+        ),
+        _recommendation(
+            "restaurant_2",
+            "Dinner Only",
+            "restaurant",
+            35.704,
+            139.744,
+            types=["restaurant", "point_of_interest"],
+            regular_opening_hours=_opening_hours(1, 17, 0, 1, 22, 0),
+        ),
+    ]
+    google_maps_client = GoogleMapsClient(
+        places=FakePlacesClient(),
+        routes=FakeRoutesClient(),
+        geocoding=FakeGeocodingClient(),
+        timezone=FakeTimeZoneClient(),
+    )
+
+    days = await service._build_days(
+        requirement,
+        primary_hotel,
+        attractions,
+        restaurants,
+        google_maps_client,
+    )
+
+    assert days[0].date == "2026-04-27"
+    assert days[0].items[0].time == "10:00"
+    assert days[0].items[0].place.name == "Open Museum"
+    assert days[0].items[1].time == "12:15"
+    assert days[0].items[1].place.name == "Open Lunch"
 
 
 @pytest.mark.asyncio
@@ -498,6 +652,7 @@ def _recommendation(
     latitude: float,
     longitude: float,
     types: list[str] | None = None,
+    regular_opening_hours: dict | None = None,
 ) -> PlaceRecommendation:
     """
     Build a place recommendation for pure planning tests.
@@ -509,6 +664,7 @@ def _recommendation(
         latitude: The latitude.
         longitude: The longitude.
         types: The Google place types to attach.
+        regular_opening_hours: The fake Google opening hours payload.
 
     Returns:
         A normalized place recommendation.
@@ -522,5 +678,46 @@ def _recommendation(
         rating=4.5,
         user_rating_count=200,
         types=place_types,
+        regular_opening_hours=regular_opening_hours,
         score=70.0,
     )
+
+
+def _opening_hours(
+    open_day: int,
+    open_hour: int,
+    open_minute: int,
+    close_day: int,
+    close_hour: int,
+    close_minute: int,
+) -> dict:
+    """
+    Build a fake Google opening hours payload.
+
+    Args:
+        open_day: The Google opening weekday.
+        open_hour: The opening hour.
+        open_minute: The opening minute.
+        close_day: The Google closing weekday.
+        close_hour: The closing hour.
+        close_minute: The closing minute.
+
+    Returns:
+        A fake regularOpeningHours payload.
+    """
+    return {
+        "periods": [
+            {
+                "open": {
+                    "day": open_day,
+                    "hour": open_hour,
+                    "minute": open_minute,
+                },
+                "close": {
+                    "day": close_day,
+                    "hour": close_hour,
+                    "minute": close_minute,
+                },
+            }
+        ]
+    }

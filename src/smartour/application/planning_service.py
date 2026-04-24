@@ -36,6 +36,11 @@ TRAVEL_MODES_BY_REQUIREMENT = {
     "transit": "TRANSIT",
     "drive": "DRIVE",
 }
+ICONIC_DISCOVERY_QUERIES = [
+    ("famous landmarks in {destination}", None),
+    ("scenic viewpoints and waterfront walks in {destination}", "tourist_attraction"),
+]
+ICONIC_DISCOVERY_SCORE_BOOST = 8.0
 INTEREST_INCLUDED_TYPES = {
     "architecture": "historical_landmark",
     "art": "art_gallery",
@@ -75,16 +80,38 @@ CLUSTER_RADIUS_METERS = {
 }
 DAILY_ROUTE_DURATION_LIMITS_SECONDS = {
     "walking": 18000,
-    "transit": 10800,
+    "transit": 7200,
     "drive": 10800,
 }
+DAILY_ROUTE_DISTANCE_LIMITS_METERS = {
+    "walking": 10000,
+    "transit": 18000,
+    "drive": 60000,
+}
+ATTRACTION_TIME_SLOTS = ["10:00", "14:00", "16:15"]
+LUNCH_TIME = "12:15"
+DINNER_TIME = "18:30"
+OPENING_HOURS_DAY_OFFSET = 1
 THEME_TYPE_WEIGHT = 3.0
 THEME_TEXT_WEIGHT = 1.25
 THEME_INTEREST_WEIGHT = 1.25
+COMBINED_THEME_MIN_SCORE = 3.0
+COMBINED_THEME_MAX_SCORE_GAP = 3.5
+CLASSIC_SIGHTSEEING_THEME = "classic sightseeing"
 WATERFRONT_DINING_THEME = "waterfront and dining"
 WATERFRONT_DINING_MIN_FOOD_SCORE = 4.0
 WATERFRONT_DINING_MIN_WATERFRONT_SCORE = 2.5
 THEME_TYPE_KEYWORDS = {
+    CLASSIC_SIGHTSEEING_THEME: [
+        "bridge",
+        "cultural_landmark",
+        "historical_landmark",
+        "monument",
+        "observation_deck",
+        "opera_house",
+        "plaza",
+        "scenic_spot",
+    ],
     "arts and museums": [
         "art_gallery",
         "art_museum",
@@ -183,6 +210,22 @@ THEME_TYPE_KEYWORDS = {
     ],
 }
 THEME_TEXT_KEYWORDS = {
+    CLASSIC_SIGHTSEEING_THEME: [
+        "bridge",
+        "cathedral",
+        "icon",
+        "iconic",
+        "landmark",
+        "lookout",
+        "monument",
+        "old town",
+        "opera house",
+        "palace",
+        "plaza",
+        "quay",
+        "square",
+        "tower",
+    ],
     "arts and museums": [
         "art",
         "arts",
@@ -315,6 +358,15 @@ THEME_TEXT_KEYWORDS = {
     ],
 }
 THEME_INTEREST_ALIASES = {
+    CLASSIC_SIGHTSEEING_THEME: [
+        "classic",
+        "first time",
+        "first-time",
+        "highlights",
+        "iconic",
+        "landmark",
+        "sightseeing",
+    ],
     "arts and museums": [
         "art",
         "arts",
@@ -553,8 +605,25 @@ class PlanningService:
         Returns:
             Ranked attraction recommendations.
         """
-        interests = requirement.interests[:3] or ["top"]
         discovered_places: list[PlaceRecommendation] = []
+        for query_template, included_type in ICONIC_DISCOVERY_QUERIES:
+            query = query_template.format(destination=requirement.destination)
+            discovered_places = _merge_unique_places(
+                discovered_places,
+                _boost_places(
+                    await self._search_places(
+                        google_maps_client=google_maps_client,
+                        text_query=query,
+                        category="attraction",
+                        requirement=requirement,
+                        destination_location=destination_location,
+                        page_size=8,
+                        included_type=included_type,
+                    ),
+                    ICONIC_DISCOVERY_SCORE_BOOST,
+                ),
+            )
+        interests = requirement.interests[:3] or ["top"]
         for interest in interests:
             query = f"{interest} attractions in {requirement.destination}"
             discovered_places = _merge_unique_places(
@@ -669,7 +738,7 @@ class PlanningService:
             primary_hotel,
             _cluster_places(ranked_attractions, requirement),
         )
-        preferred_themes = _preferred_themes(requirement)
+        preferred_themes = _preferred_themes(requirement, day_count)
         ranked_restaurants = _nearby_ranked_places(
             primary_hotel, restaurants, requirement
         )
@@ -677,6 +746,7 @@ class PlanningService:
         used_restaurant_ids: set[str] = set()
         days: list[ItineraryDay] = []
         for day_index in range(day_count):
+            day_date = _day_date(requirement, day_index)
             preferred_theme = _preferred_theme_for_day(preferred_themes, day_index)
             day_cluster = _select_day_cluster(
                 attraction_clusters,
@@ -689,10 +759,14 @@ class PlanningService:
                 used_attraction_ids,
                 attraction_count,
                 preferred_theme,
+                day_date,
             )
             day_theme = _cluster_theme(day_attractions, requirement)
             lunch, dinner = _select_daily_restaurants(
-                day_attractions, ranked_restaurants, used_restaurant_ids
+                day_attractions,
+                ranked_restaurants,
+                used_restaurant_ids,
+                day_date,
             )
             items = _scheduled_items(day_attractions, lunch, dinner)
             route = await self._build_route_summary(
@@ -706,7 +780,10 @@ class PlanningService:
                     primary_hotel, day_attractions
                 )
                 lunch, dinner = _select_daily_restaurants(
-                    day_attractions, ranked_restaurants, used_restaurant_ids
+                    day_attractions,
+                    ranked_restaurants,
+                    used_restaurant_ids,
+                    day_date,
                 )
                 day_theme = _cluster_theme(day_attractions, requirement)
                 items = _scheduled_items(day_attractions, lunch, dinner)
@@ -723,7 +800,7 @@ class PlanningService:
             days.append(
                 ItineraryDay(
                     day_number=day_index + 1,
-                    date=_day_date(requirement, day_index),
+                    date=day_date,
                     theme=day_theme,
                     summary=_day_summary(day_index + 1, day_theme, day_attractions),
                     items=items,
@@ -940,6 +1017,8 @@ def _place_from_google_payload(
         user_rating_count=payload.get("userRatingCount"),
         price_level=payload.get("priceLevel"),
         types=payload.get("types") or [],
+        regular_opening_hours=payload.get("regularOpeningHours"),
+        current_opening_hours=payload.get("currentOpeningHours"),
     )
     place.score = _score_place(place, requirement)
     return place
@@ -966,6 +1045,25 @@ def _merge_unique_places(
             merged_places.append(place)
             seen_place_ids.add(place.place_id)
     return merged_places
+
+
+def _boost_places(
+    places: list[PlaceRecommendation], score_boost: float
+) -> list[PlaceRecommendation]:
+    """
+    Return places with an additional discovery score boost.
+
+    Args:
+        places: The places to boost.
+        score_boost: The score amount to add.
+
+    Returns:
+        Copies of the places with boosted scores.
+    """
+    return [
+        place.model_copy(update={"score": place.score + score_boost})
+        for place in places
+    ]
 
 
 def _coordinates_from_google_location(payload: dict[str, Any]) -> Coordinates | None:
@@ -1218,22 +1316,29 @@ def _cluster_radius(requirement: TravelRequirement) -> float:
     return CLUSTER_RADIUS_METERS.get(requirement.transportation_mode or "", 9000.0)
 
 
-def _preferred_themes(requirement: TravelRequirement) -> list[str]:
+def _preferred_themes(requirement: TravelRequirement, day_count: int) -> list[str]:
     """
     Resolve user interests to ordered travel themes.
 
     Args:
         requirement: The confirmed travel requirement snapshot.
+        day_count: The itinerary day count.
 
     Returns:
         Unique preferred themes in user-interest order.
     """
-    themes: list[str] = []
+    interest_themes: list[str] = []
+    if day_count >= 3:
+        interest_themes.append(CLASSIC_SIGHTSEEING_THEME)
     for interest in requirement.interests:
         theme = _theme_for_interest(interest)
-        if theme and theme not in themes:
-            themes.append(theme)
-    return themes
+        if theme and theme not in interest_themes:
+            interest_themes.append(theme)
+    if day_count < 3:
+        return interest_themes
+    food_themes = [theme for theme in interest_themes if theme == "food and markets"]
+    primary_themes = [theme for theme in interest_themes if theme != "food and markets"]
+    return [*primary_themes, *food_themes]
 
 
 def _theme_for_interest(interest: str) -> str | None:
@@ -1336,6 +1441,7 @@ def _select_cluster_places(
     used_place_ids: set[str],
     count: int,
     preferred_theme: str | None,
+    day_date: str | None,
 ) -> list[PlaceRecommendation]:
     """
     Select unused places from a day cluster.
@@ -1345,6 +1451,7 @@ def _select_cluster_places(
         used_place_ids: Place IDs already assigned to prior days.
         count: The requested selection count.
         preferred_theme: The preferred theme for this day.
+        day_date: The concrete itinerary date when known.
 
     Returns:
         The selected places.
@@ -1356,7 +1463,19 @@ def _select_cluster_places(
         available_places = cluster
     if preferred_theme:
         available_places = _theme_ranked_places(available_places, preferred_theme)
-    return available_places[: max(1, min(count, len(available_places)))]
+    selected_places: list[PlaceRecommendation] = []
+    remaining_places = list(available_places)
+    for time_text in ATTRACTION_TIME_SLOTS[: max(1, count)]:
+        if not remaining_places:
+            break
+        selected_place = _first_open_place(remaining_places, day_date, time_text)
+        selected_places.append(selected_place)
+        remaining_places = [
+            place
+            for place in remaining_places
+            if place.place_id != selected_place.place_id
+        ]
+    return selected_places
 
 
 def _cluster_theme(
@@ -1384,9 +1503,71 @@ def _cluster_theme(
     best_theme, best_score = max(theme_scores.items(), key=lambda item: item[1])
     if best_score == 0:
         return "city highlights"
+    if _should_prefer_classic_sightseeing(theme_scores, best_theme):
+        return CLASSIC_SIGHTSEEING_THEME
     if _is_waterfront_dining_theme(theme_scores, best_theme):
         return WATERFRONT_DINING_THEME
+    combined_theme = _combined_theme(theme_scores, best_theme)
+    if combined_theme:
+        return combined_theme
     return best_theme
+
+
+def _should_prefer_classic_sightseeing(
+    theme_scores: dict[str, float], best_theme: str
+) -> bool:
+    """
+    Return whether classic sightseeing should override a close theme score.
+
+    Args:
+        theme_scores: The calculated theme scores.
+        best_theme: The highest scoring base theme.
+
+    Returns:
+        True when classic sightseeing is close enough to be more useful.
+    """
+    classic_score = theme_scores[CLASSIC_SIGHTSEEING_THEME]
+    best_score = theme_scores[best_theme]
+    return (
+        best_theme != CLASSIC_SIGHTSEEING_THEME
+        and classic_score >= COMBINED_THEME_MIN_SCORE
+        and best_score - classic_score <= COMBINED_THEME_MAX_SCORE_GAP
+    )
+
+
+def _combined_theme(theme_scores: dict[str, float], best_theme: str) -> str | None:
+    """
+    Return a mixed theme when a day has two strong place contexts.
+
+    Args:
+        theme_scores: The calculated theme scores.
+        best_theme: The highest scoring base theme.
+
+    Returns:
+        A combined theme label when appropriate.
+    """
+    ranked_themes = sorted(theme_scores.items(), key=lambda item: item[1], reverse=True)
+    second_theme, second_score = ranked_themes[1]
+    best_score = theme_scores[best_theme]
+    if second_score < COMBINED_THEME_MIN_SCORE:
+        return None
+    if best_score - second_score > COMBINED_THEME_MAX_SCORE_GAP:
+        return None
+    theme_pairs = {
+        frozenset({"arts and museums", "food and markets"}): "food and arts",
+        frozenset({"arts and museums", "waterfront and views"}): "waterfront and arts",
+        frozenset({"food and markets", "parks and gardens"}): "markets and gardens",
+        frozenset(
+            {"heritage and landmarks", "parks and gardens"}
+        ): "parks and heritage",
+        frozenset(
+            {"heritage and landmarks", "waterfront and views"}
+        ): "waterfront heritage",
+        frozenset(
+            {"parks and gardens", "waterfront and views"}
+        ): "waterfront parks and views",
+    }
+    return theme_pairs.get(frozenset({best_theme, second_theme}))
 
 
 def _is_waterfront_dining_theme(
@@ -1537,6 +1718,7 @@ def _select_daily_restaurants(
     day_attractions: list[PlaceRecommendation],
     restaurants: list[PlaceRecommendation],
     used_restaurant_ids: set[str],
+    day_date: str | None,
 ) -> tuple[PlaceRecommendation, PlaceRecommendation]:
     """
     Select restaurants near the day's attraction cluster.
@@ -1545,6 +1727,7 @@ def _select_daily_restaurants(
         day_attractions: The selected attractions for the day.
         restaurants: The ranked restaurant candidates.
         used_restaurant_ids: Restaurant IDs already assigned to prior days.
+        day_date: The concrete itinerary date when known.
 
     Returns:
         Lunch and dinner restaurant recommendations.
@@ -1558,7 +1741,10 @@ def _select_daily_restaurants(
         available_restaurants = restaurants
     lunch_anchor = day_attractions[0].location if day_attractions else None
     dinner_anchor = day_attractions[-1].location if day_attractions else None
-    lunch = _nearest_place(lunch_anchor, available_restaurants)
+    lunch_options = _places_open_at(available_restaurants, day_date, LUNCH_TIME)
+    if not lunch_options:
+        lunch_options = available_restaurants
+    lunch = _nearest_place(lunch_anchor, lunch_options)
     dinner_options = [
         restaurant
         for restaurant in available_restaurants
@@ -1566,8 +1752,153 @@ def _select_daily_restaurants(
     ]
     if not dinner_options:
         dinner_options = restaurants
+    open_dinner_options = _places_open_at(dinner_options, day_date, DINNER_TIME)
+    if open_dinner_options:
+        dinner_options = open_dinner_options
     dinner = _nearest_place(dinner_anchor, dinner_options)
     return lunch, dinner
+
+
+def _first_open_place(
+    places: list[PlaceRecommendation], day_date: str | None, time_text: str
+) -> PlaceRecommendation:
+    """
+    Return the first place open at the requested itinerary time.
+
+    Args:
+        places: The ranked candidate places.
+        day_date: The concrete itinerary date when known.
+        time_text: The local time in HH:MM format.
+
+    Returns:
+        The first open place, or the first candidate when hours are unavailable.
+    """
+    for place in places:
+        if _place_is_open_at(place, day_date, time_text):
+            return place
+    return places[0]
+
+
+def _places_open_at(
+    places: list[PlaceRecommendation], day_date: str | None, time_text: str
+) -> list[PlaceRecommendation]:
+    """
+    Filter places to those open at the requested itinerary time.
+
+    Args:
+        places: The candidate places.
+        day_date: The concrete itinerary date when known.
+        time_text: The local time in HH:MM format.
+
+    Returns:
+        Places open at the requested time.
+    """
+    return [place for place in places if _place_is_open_at(place, day_date, time_text)]
+
+
+def _place_is_open_at(
+    place: PlaceRecommendation, day_date: str | None, time_text: str
+) -> bool:
+    """
+    Return whether a place is expected to be open at a local date and time.
+
+    Args:
+        place: The candidate place.
+        day_date: The concrete itinerary date when known.
+        time_text: The local time in HH:MM format.
+
+    Returns:
+        True when hours are unavailable or the place is open at that time.
+    """
+    if day_date is None:
+        return True
+    opening_hours = place.regular_opening_hours or place.current_opening_hours
+    if opening_hours is None:
+        return True
+    periods = opening_hours.get("periods")
+    if periods is None:
+        return True
+    if not periods:
+        return False
+    requested_day = _google_weekday(day_date)
+    requested_minutes = _time_to_minutes(time_text)
+    return any(
+        _period_contains_time(period, requested_day, requested_minutes)
+        for period in periods
+    )
+
+
+def _period_contains_time(
+    period: dict[str, Any], requested_day: int, requested_minutes: int
+) -> bool:
+    """
+    Return whether an opening-hours period contains a requested time.
+
+    Args:
+        period: The Google Places opening-hours period.
+        requested_day: The Google weekday value.
+        requested_minutes: The requested minute of day.
+
+    Returns:
+        True when the period contains the requested time.
+    """
+    open_point = period.get("open", {})
+    close_point = period.get("close")
+    if close_point is None:
+        return True
+    open_day = int(open_point.get("day", requested_day))
+    close_day = int(close_point.get("day", requested_day))
+    open_minutes = _point_minutes(open_point)
+    close_minutes = _point_minutes(close_point)
+    requested_value = requested_day * 1440 + requested_minutes
+    open_value = open_day * 1440 + open_minutes
+    close_value = close_day * 1440 + close_minutes
+    if close_value <= open_value:
+        close_value += 7 * 1440
+        if requested_value < open_value:
+            requested_value += 7 * 1440
+    return open_value <= requested_value < close_value
+
+
+def _google_weekday(day_date: str) -> int:
+    """
+    Convert an ISO date to a Google Places weekday number.
+
+    Args:
+        day_date: The ISO date string.
+
+    Returns:
+        The Google weekday value, where 0 is Sunday.
+    """
+    parsed_date = date.fromisoformat(day_date)
+    return (parsed_date.weekday() + OPENING_HOURS_DAY_OFFSET) % 7
+
+
+def _point_minutes(point: dict[str, Any]) -> int:
+    """
+    Convert a Google opening-hours point to minutes after midnight.
+
+    Args:
+        point: The Google opening-hours point.
+
+    Returns:
+        Minutes after midnight.
+    """
+    return int(point.get("hour", 0)) * 60 + int(point.get("minute", 0))
+
+
+def _time_to_minutes(time_text: str) -> int:
+    """
+    Convert HH:MM text to minutes after midnight.
+
+    Args:
+        time_text: The local time in HH:MM format.
+
+    Returns:
+        Minutes after midnight.
+    """
+    hour_text, minute_text = time_text.split(":", maxsplit=1)
+    return int(hour_text) * 60 + int(minute_text)
 
 
 def _nearest_place(
@@ -1627,12 +1958,18 @@ def _route_exceeds_limit(
     Returns:
         True when the route should be reduced.
     """
-    if route is None or route.duration_seconds == 0:
+    if route is None:
         return False
-    limit = DAILY_ROUTE_DURATION_LIMITS_SECONDS.get(
+    duration_limit = DAILY_ROUTE_DURATION_LIMITS_SECONDS.get(
         requirement.transportation_mode or "", 10800
     )
-    return route.duration_seconds > limit
+    distance_limit = DAILY_ROUTE_DISTANCE_LIMITS_METERS.get(
+        requirement.transportation_mode or "", 60000
+    )
+    return (
+        route.duration_seconds > duration_limit
+        or route.distance_meters > distance_limit
+    )
 
 
 def _distance_from_reference(
@@ -1893,11 +2230,11 @@ def _scheduled_items(
         The scheduled itinerary items.
     """
     schedule = [
-        ("09:30", ItineraryItemType.ATTRACTION, 120),
-        ("11:45", ItineraryItemType.LUNCH, 75),
-        ("13:30", ItineraryItemType.ATTRACTION, 120),
-        ("16:00", ItineraryItemType.ATTRACTION, 90),
-        ("18:30", ItineraryItemType.DINNER, 90),
+        (ATTRACTION_TIME_SLOTS[0], ItineraryItemType.ATTRACTION, 105),
+        (LUNCH_TIME, ItineraryItemType.LUNCH, 75),
+        (ATTRACTION_TIME_SLOTS[1], ItineraryItemType.ATTRACTION, 105),
+        (ATTRACTION_TIME_SLOTS[2], ItineraryItemType.ATTRACTION, 75),
+        (DINNER_TIME, ItineraryItemType.DINNER, 90),
     ]
     attraction_index = 0
     items: list[ItineraryItem] = []
