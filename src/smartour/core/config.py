@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     google_maps_timeout_seconds: float = Field(
         default=10.0, validation_alias="GOOGLE_MAPS_TIMEOUT_SECONDS"
     )
+    openai_api_baseurl: str | None = Field(
+        default=None, validation_alias="OPENAI_API_BASEURL"
+    )
+    openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
+    openai_api_model: str | None = Field(
+        default=None, validation_alias="OPENAI_API_MODEL"
+    )
 
     @model_validator(mode="after")
     def validate_google_maps_api_key(self) -> Self:
@@ -31,3 +38,12 @@ class Settings(BaseSettings):
         if not self.google_maps_api_key:
             raise ValueError("GOOGLE_MAPS_API_KEY is required")
         return self
+
+    def has_openai_config(self) -> bool:
+        """
+        Return whether OpenAI API settings are configured.
+
+        Returns:
+            True when the API key and model are available.
+        """
+        return bool(self.openai_api_key and self.openai_api_model)
