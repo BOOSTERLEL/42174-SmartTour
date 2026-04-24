@@ -6,3 +6,5 @@ __pycache__
 /.env
 /AGENTS.md
 /GEMINI.md
+/.logs
+/data

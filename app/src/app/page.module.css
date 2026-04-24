@@ -1,0 +1,724 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: var(--background);
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background-color: var(--background);
+  box-shadow: var(--shadow-border);
+}
+
+.logo {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.96px;
+}
+
+.navLinks {
+  display: flex;
+  gap: 32px;
+}
+
+.navLink {
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.navLink:hover {
+  opacity: 0.72;
+}
+
+.headerActions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.subHeader {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 24px;
+}
+
+.step {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.stepNumber {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: var(--shadow-border);
+}
+
+.stepActive {
+  color: var(--foreground);
+}
+
+.collect .stepNumber {
+  color: var(--accent-develop);
+  box-shadow: 0 0 0 2px var(--accent-develop);
+}
+
+.plan .stepNumber {
+  color: var(--accent-preview);
+  box-shadow: 0 0 0 2px var(--accent-preview);
+}
+
+.review .stepNumber {
+  color: var(--accent-ship);
+  box-shadow: 0 0 0 2px var(--accent-ship);
+}
+
+.stepLine {
+  width: 48px;
+  height: 1px;
+  background-color: var(--border);
+}
+
+.mainContent {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr) minmax(
+      280px,
+      320px
+    );
+  gap: 24px;
+  padding: 0 24px 24px;
+}
+
+.leftSidebar,
+.rightSidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.middleColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+
+.chatCard {
+  position: sticky;
+  top: 90px;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 180px);
+}
+
+.chatHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  box-shadow: 0 1px 0 0 var(--border);
+}
+
+.chatHeaderTitle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 600;
+}
+
+.chatMessages {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.messageHeader {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background-color: var(--bg-hover);
+  border-radius: 50%;
+}
+
+.assistantAvatar {
+  color: var(--link-blue);
+}
+
+.messageBubble {
+  width: fit-content;
+  max-width: 92%;
+  padding: 12px;
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  background-color: var(--bg-hover);
+  border-radius: 8px;
+}
+
+.assistantBubble {
+  background-color: var(--background);
+  box-shadow: var(--shadow-border);
+}
+
+.errorBubble {
+  color: var(--accent-ship);
+}
+
+.confirmBar {
+  padding: 12px 16px;
+  box-shadow: 0 -1px 0 0 var(--border);
+}
+
+.chatInputContainer {
+  display: flex;
+  gap: 8px;
+  padding: 16px;
+  box-shadow: 0 -1px 0 0 var(--border);
+}
+
+.chatInput {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 14px;
+  background-color: var(--background);
+  border: none;
+  border-radius: 6px;
+  box-shadow: var(--shadow-border);
+}
+
+.chatInput:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.sendBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  color: var(--text-secondary);
+  background-color: var(--background);
+  border-radius: 6px;
+  box-shadow: var(--shadow-border);
+}
+
+.sendBtn:hover {
+  color: var(--foreground);
+  background-color: var(--bg-hover);
+}
+
+.titleArea {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.titleArea h1 {
+  margin: 0;
+}
+
+.titleMeta {
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.badgeText {
+  margin-left: 4px;
+}
+
+.tabs {
+  display: flex;
+  gap: 24px;
+  min-width: 0;
+  overflow-x: auto;
+  box-shadow: 0 1px 0 0 var(--border);
+}
+
+.tab {
+  flex: 0 0 auto;
+  padding: 12px 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+}
+
+.tab:hover {
+  color: var(--foreground);
+}
+
+.tab.active {
+  color: var(--foreground);
+  border-bottom-color: var(--foreground);
+}
+
+.mapContainer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 360px;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  background:
+    linear-gradient(90deg, rgba(235, 235, 235, 0.72) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(235, 235, 235, 0.72) 1px, transparent 1px),
+    var(--bg-hover);
+  background-size: 56px 56px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-border);
+}
+
+.googleMapCanvas {
+  position: absolute;
+  inset: 0;
+}
+
+.mapBackdrop {
+  position: absolute;
+  inset: 0;
+}
+
+.mapBackdrop::before {
+  position: absolute;
+  top: 48%;
+  left: 12%;
+  width: 76%;
+  height: 2px;
+  content: "";
+  background: linear-gradient(
+    90deg,
+    var(--accent-develop),
+    var(--accent-preview),
+    var(--accent-ship)
+  );
+  opacity: 0.42;
+}
+
+.mapEmpty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
+
+.mapMarker {
+  position: absolute;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 6px 8px;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 600;
+  background-color: var(--background);
+  border-radius: 8px;
+  box-shadow: var(--shadow-subtle);
+  transform: translate(-50%, -50%);
+}
+
+.fallbackRouteSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.fallbackRouteHalo {
+  fill: none;
+  stroke: var(--background);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 7;
+}
+
+.fallbackRoutePath {
+  fill: none;
+  stroke: var(--accent-develop);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.fallbackMarker {
+  fill: var(--background);
+  stroke: var(--foreground);
+  stroke-width: 0.8;
+}
+
+.fallbackMarkerLabel {
+  fill: var(--foreground);
+  font-size: 3.2px;
+  font-weight: 600;
+}
+
+.mapFallbackBadge {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 8px;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 500;
+  background-color: var(--background);
+  border-radius: 6px;
+  box-shadow: var(--shadow-subtle);
+}
+
+.mapErrorDetail {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  max-width: min(420px, calc(100% - 32px));
+  padding: 6px 8px;
+  color: var(--accent-ship);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  background-color: var(--background);
+  border-radius: 6px;
+  box-shadow: var(--shadow-subtle);
+}
+
+.mapControls {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--background);
+  border-radius: 6px;
+  box-shadow: var(--shadow-subtle);
+}
+
+.mapBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  color: var(--text-secondary);
+}
+
+.mapBtn:hover {
+  color: var(--foreground);
+  background-color: var(--bg-hover);
+}
+
+.mapDivider {
+  height: 1px;
+  background-color: var(--border);
+}
+
+.routeOverlay {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  gap: 8px;
+}
+
+.routeOverlay span {
+  padding: 4px 8px;
+  color: var(--foreground);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+  background-color: var(--background);
+  border-radius: 6px;
+  box-shadow: var(--shadow-border);
+}
+
+.routeStopsTitle {
+  margin: 8px 0 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.routeList {
+  display: flex;
+  flex-direction: column;
+}
+
+.routeItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 16px;
+  align-items: center;
+  padding: 16px 0;
+  font-size: 14px;
+  box-shadow: 0 1px 0 0 var(--border);
+}
+
+.routeItem:last-child {
+  box-shadow: none;
+}
+
+.routeNumber {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  background-color: var(--link-blue);
+  border-radius: 50%;
+}
+
+.routePlaceName {
+  overflow-wrap: anywhere;
+  font-weight: 500;
+}
+
+.routeAddress {
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.routeTime {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: right;
+}
+
+.routeTransit {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--text-secondary);
+}
+
+.routeTransitIcon {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.badgeSmall {
+  padding: 2px 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+  background-color: var(--bg-hover);
+  border-radius: 9999px;
+}
+
+.emptyRouteState {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 20px 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.summarySection {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  box-shadow: 0 1px 0 0 var(--border);
+}
+
+.summarySection:last-child {
+  box-shadow: none;
+}
+
+.summaryTitle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.summaryStack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.summaryRow {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  font-size: 14px;
+}
+
+.summaryLabel {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+}
+
+.summaryValue {
+  min-width: 0;
+  color: var(--foreground);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.stayInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.stayAddress {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.errorText {
+  color: var(--accent-ship);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1200px) {
+  .mainContent {
+    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  }
+
+  .rightSidebar {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .mainContent {
+    grid-template-columns: 1fr;
+  }
+
+  .chatCard {
+    position: static;
+    height: 440px;
+  }
+
+  .navLinks {
+    display: none;
+  }
+
+  .titleArea {
+    flex-direction: column;
+  }
+
+  .routeItem {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .routeTime,
+  .routeTransit {
+    grid-column: 2;
+    justify-content: flex-start;
+    text-align: left;
+  }
+}
+
+@media (max-width: 560px) {
+  .header {
+    padding: 12px 16px;
+  }
+
+  .headerActions {
+    gap: 8px;
+  }
+
+  .subHeader {
+    padding: 16px;
+    overflow-x: auto;
+  }
+
+  .mainContent {
+    padding: 0 16px 16px;
+  }
+
+  .mapContainer {
+    height: 300px;
+  }
+}

@@ -1,0 +1,250 @@
+@import "next/font/google";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --text-secondary: #4d4d4d;
+  --text-tertiary: #666666;
+  --text-disabled: #808080;
+
+  --border: #ebebeb;
+  --shadow-border: 0px 0px 0px 1px rgba(0, 0, 0, 0.08);
+  --shadow-card:
+    0px 0px 0px 1px rgba(0, 0, 0, 0.08), 0px 2px 2px rgba(0, 0, 0, 0.04),
+    0px 8px 8px -8px rgba(0, 0, 0, 0.04), inset 0px 0px 0px 1px #fafafa;
+  --shadow-subtle:
+    0px 0px 0px 1px rgba(0, 0, 0, 0.08), 0px 2px 2px rgba(0, 0, 0, 0.04);
+
+  --bg-card: #ffffff;
+  --bg-hover: #fafafa;
+
+  --focus-ring: hsla(212, 100%, 48%, 1);
+  --link-blue: #0072f5;
+
+  --badge-bg: #ebf5ff;
+  --badge-text: #0068d6;
+
+  --primary-invert-bg: #171717;
+  --primary-invert-text: #ffffff;
+
+  --accent-develop: #0a72ef;
+  --accent-preview: #de1d8d;
+  --accent-ship: #ff5b4f;
+}
+
+.dark {
+  --background: #000000;
+  --foreground: #ededed;
+  --text-secondary: #a1a1aa;
+  --text-tertiary: #71717a;
+  --text-disabled: #52525b;
+
+  --border: #333333;
+  --shadow-border: 0px 0px 0px 1px rgba(255, 255, 255, 0.14);
+  --shadow-card:
+    0px 0px 0px 1px rgba(255, 255, 255, 0.14), 0px 4px 8px rgba(0, 0, 0, 0.5);
+  --shadow-subtle:
+    0px 0px 0px 1px rgba(255, 255, 255, 0.14), 0px 2px 4px rgba(0, 0, 0, 0.5);
+
+  --bg-card: #0a0a0a;
+  --bg-hover: #171717;
+
+  --badge-bg: rgba(0, 104, 214, 0.2);
+  --badge-text: #60a5fa;
+
+  --primary-invert-bg: #ffffff;
+  --primary-invert-text: #000000;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-feature-settings: "liga" 1;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+  border: none;
+  background: none;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+/* Typography Utility Classes */
+.font-mono {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+.text-hero {
+  font-size: 48px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -2.4px;
+}
+.text-section {
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -2.4px;
+}
+.text-sub-large {
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -1.28px;
+}
+.text-sub {
+  font-size: 32px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: -1.28px;
+}
+.text-card-title {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.33;
+  letter-spacing: -0.96px;
+}
+.text-body-large {
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1.8;
+}
+.text-body {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.text-body-medium {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.text-body-semibold {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: -0.32px;
+}
+.text-button {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.43;
+}
+.text-caption {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.33;
+}
+.text-mono-body {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.text-mono-caption {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.54;
+}
+
+/* Colors Utility */
+.text-secondary {
+  color: var(--text-secondary);
+}
+.text-tertiary {
+  color: var(--text-tertiary);
+}
+.text-disabled {
+  color: var(--text-disabled);
+}
+.text-link {
+  color: var(--link-blue);
+}
+
+/* Component Styles */
+.card {
+  background-color: var(--bg-card);
+  box-shadow: var(--shadow-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.card-elevated {
+  background-color: var(--bg-card);
+  box-shadow: var(--shadow-card);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.btn-primary {
+  background-color: var(--primary-invert-bg);
+  color: var(--primary-invert-text);
+}
+.btn-primary:hover {
+  opacity: 0.9;
+}
+.btn-secondary {
+  background-color: var(--background);
+  color: var(--foreground);
+  box-shadow: var(--shadow-border);
+}
+.btn-secondary:hover {
+  background-color: var(--bg-hover);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+.btn-ghost:hover {
+  background-color: var(--bg-hover);
+  color: var(--foreground);
+}
+
+.badge {
+  background-color: var(--badge-bg);
+  color: var(--badge-text);
+  padding: 2px 10px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+}
+
+.layout-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
