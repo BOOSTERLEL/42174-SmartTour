@@ -60,7 +60,9 @@ async def create_conversation(
     Returns:
         The new conversation state.
     """
-    conversation = conversation_service.create_conversation(request.initial_message)
+    conversation = await conversation_service.create_conversation(
+        request.initial_message
+    )
     return _conversation_response(conversation)
 
 
@@ -81,7 +83,7 @@ async def get_conversation(
     Returns:
         The current conversation state.
     """
-    conversation = conversation_service.get_conversation(conversation_id)
+    conversation = await conversation_service.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
@@ -108,7 +110,7 @@ async def send_message(
     Returns:
         The updated conversation state.
     """
-    conversation = conversation_service.handle_user_message(
+    conversation = await conversation_service.handle_user_message(
         conversation_id, request.message
     )
     if conversation is None:
@@ -135,7 +137,7 @@ async def confirm_conversation(
     Returns:
         The updated conversation state.
     """
-    conversation = conversation_service.confirm_requirements(conversation_id)
+    conversation = await conversation_service.confirm_requirements(conversation_id)
     if conversation is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"

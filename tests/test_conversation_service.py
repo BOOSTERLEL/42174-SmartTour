@@ -1,5 +1,7 @@
 """Tests for conversation requirement collection."""
 
+import pytest
+
 from smartour.application.conversation_service import ConversationService
 from smartour.application.requirement_extractor import RuleBasedRequirementExtractor
 from smartour.domain.conversation import ConversationState
@@ -8,13 +10,14 @@ from smartour.infrastructure.repositories.conversations import (
 )
 
 
-def test_conversation_collects_required_slots_from_initial_message() -> None:
+@pytest.mark.asyncio
+async def test_conversation_collects_required_slots_from_initial_message() -> None:
     """
     Verify that the conversation service collects enough required slots.
     """
     service = _conversation_service()
 
-    conversation = service.create_conversation(
+    conversation = await service.create_conversation(
         "I want to go to Tokyo for 4 days with 2 people, moderate budget, "
         "relaxed pace, food and museums, stay near Shinjuku, use transit."
     )
@@ -32,30 +35,34 @@ def test_conversation_collects_required_slots_from_initial_message() -> None:
     assert conversation.requirement.missing_required_slots() == []
 
 
-def test_conversation_remains_collecting_when_slots_are_missing() -> None:
+@pytest.mark.asyncio
+async def test_conversation_remains_collecting_when_slots_are_missing() -> None:
     """
     Verify that missing required slots keep the conversation in collection state.
     """
     service = _conversation_service()
 
-    conversation = service.create_conversation("I want to visit Sydney for 3 days.")
+    conversation = await service.create_conversation(
+        "I want to visit Sydney for 3 days."
+    )
 
     assert conversation.state == ConversationState.COLLECTING_REQUIREMENTS
     assert "travelers" in conversation.requirement.missing_required_slots()
     assert conversation.latest_assistant_message() is not None
 
 
-def test_confirm_requirements_moves_conversation_to_planning() -> None:
+@pytest.mark.asyncio
+async def test_confirm_requirements_moves_conversation_to_planning() -> None:
     """
     Verify that confirmation moves a complete conversation into planning state.
     """
     service = _conversation_service()
-    conversation = service.create_conversation(
+    conversation = await service.create_conversation(
         "I want to visit Sydney for 3 days with 2 people, medium budget, "
         "balanced pace, food and nature, stay near station, use transit."
     )
 
-    confirmed_conversation = service.confirm_requirements(conversation.id)
+    confirmed_conversation = await service.confirm_requirements(conversation.id)
 
     assert confirmed_conversation is not None
     assert confirmed_conversation.state == ConversationState.PLANNING

@@ -193,7 +193,7 @@ async def test_planning_service_generates_structured_itinerary() -> None:
     conversation_repository = InMemoryConversationRepository()
     itinerary_repository = InMemoryItineraryRepository()
     conversation = Conversation(requirement=_complete_requirement())
-    conversation_repository.save(conversation)
+    await conversation_repository.save(conversation)
     places_client = FakePlacesClient()
     routes_client = FakeRoutesClient()
     google_maps_client = GoogleMapsClient(
@@ -237,7 +237,7 @@ async def test_planning_service_generates_structured_itinerary() -> None:
         "museum",
         None,
     ]
-    assert service.get_itinerary(itinerary.id) is not None
+    assert await service.get_itinerary(itinerary.id) is not None
 
 
 def test_cluster_places_groups_nearby_attractions_by_area() -> None:
@@ -572,7 +572,7 @@ async def test_planning_service_rejects_incomplete_requirements() -> None:
     conversation_repository = InMemoryConversationRepository()
     itinerary_repository = InMemoryItineraryRepository()
     conversation = Conversation()
-    conversation_repository.save(conversation)
+    await conversation_repository.save(conversation)
     service = PlanningService(conversation_repository, itinerary_repository)
 
     with pytest.raises(PlanningInputError):

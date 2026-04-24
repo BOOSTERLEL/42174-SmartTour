@@ -1,11 +1,14 @@
 """Tests for Google Maps client request construction and response handling."""
 
 import json
+from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 
+from smartour.infrastructure.database import SQLiteDatabase
+from smartour.infrastructure.google_api_store import SQLiteGoogleApiStore
 from smartour.integrations.google_maps.client import (
     GoogleMapsApiError,
     GoogleMapsHttpClient,
@@ -112,6 +115,48 @@ async def test_geocoding_status_error_becomes_google_maps_error() -> None:
         client = GoogleGeocodingClient(GoogleMapsHttpClient("test-key", http_client))
         with pytest.raises(GoogleMapsApiError, match="API disabled"):
             await client.geocode("Sydney")
+
+
+@pytest.mark.asyncio
+async def test_google_maps_http_client_caches_successful_requests(
+    tmp_path: Path,
+) -> None:
+    """
+    Verify that cached Google API responses avoid duplicate HTTP requests.
+    """
+    request_count = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        """
+        Handle the mocked Places request.
+
+        Args:
+            request: The outgoing HTTP request.
+
+        Returns:
+            A mocked successful Places response.
+        """
+        nonlocal request_count
+        request_count += 1
+        return httpx.Response(200, json={"places": [{"id": "place-1"}]})
+
+    database = SQLiteDatabase(str(tmp_path / "smartour.sqlite3"))
+    api_store = SQLiteGoogleApiStore(database)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        base_client = GoogleMapsHttpClient(
+            "test-key",
+            http_client,
+            api_store=api_store,
+            default_cache_ttl_seconds=60,
+        )
+        client = GooglePlacesClient(base_client)
+
+        first_payload = await client.search_text("coffee in Sydney", page_size=1)
+        second_payload = await client.search_text("coffee in Sydney", page_size=1)
+
+    assert first_payload == second_payload
+    assert request_count == 1
+    assert await api_store.count_metrics() == 2
 
 
 def _json_body(request: httpx.Request) -> dict[str, Any]:

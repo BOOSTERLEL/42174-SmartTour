@@ -17,10 +17,6 @@ from smartour.domain.itinerary import (
     RouteSummary,
 )
 from smartour.domain.requirement import TravelRequirement
-from smartour.infrastructure.repositories.conversations import (
-    InMemoryConversationRepository,
-)
-from smartour.infrastructure.repositories.itineraries import InMemoryItineraryRepository
 from smartour.integrations.google_maps.client import GoogleMapsClient
 from smartour.integrations.google_maps.field_masks import (
     PLACES_RECOMMENDATION_FIELD_MASK,
@@ -443,8 +439,8 @@ class PlanningService:
 
     def __init__(
         self,
-        conversation_repository: InMemoryConversationRepository,
-        itinerary_repository: InMemoryItineraryRepository,
+        conversation_repository: Any,
+        itinerary_repository: Any,
     ) -> None:
         """
         Initialize the planning service.
@@ -472,7 +468,7 @@ class PlanningService:
         Raises:
             PlanningInputError: Raised when required slots are incomplete.
         """
-        conversation = self.conversation_repository.get(conversation_id)
+        conversation = await self.conversation_repository.get(conversation_id)
         if conversation is None:
             return None
         requirement = conversation.requirement
@@ -517,10 +513,10 @@ class PlanningService:
             days=days,
             guide_markdown=self._render_guide(requirement, hotels[:3], days),
         )
-        self.itinerary_repository.save(itinerary)
+        await self.itinerary_repository.save(itinerary)
         return itinerary
 
-    def get_itinerary(self, itinerary_id: str) -> Itinerary | None:
+    async def get_itinerary(self, itinerary_id: str) -> Itinerary | None:
         """
         Return a generated itinerary by ID.
 
@@ -530,7 +526,7 @@ class PlanningService:
         Returns:
             The itinerary when found.
         """
-        return self.itinerary_repository.get(itinerary_id)
+        return await self.itinerary_repository.get(itinerary_id)
 
     async def _resolve_destination(
         self, requirement: TravelRequirement, google_maps_client: GoogleMapsClient

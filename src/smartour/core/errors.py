@@ -32,3 +32,9 @@ class PlanningInputError(SmartourError):
     """
     Error raised when itinerary planning cannot start from current inputs.
     """
+
+
+class RateLimitError(SmartourError):
+    """
+    Error raised when a request exceeds configured rate limits.
+    """

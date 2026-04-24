@@ -1,5 +1,7 @@
 """Conversation orchestration service for travel requirement collection."""
 
+from typing import Any
+
 from smartour.application.requirement_extractor import RequirementExtractor
 from smartour.domain.conversation import (
     Conversation,
@@ -7,9 +9,6 @@ from smartour.domain.conversation import (
     MessageRole,
 )
 from smartour.domain.requirement import TravelRequirement
-from smartour.infrastructure.repositories.conversations import (
-    InMemoryConversationRepository,
-)
 
 
 class ConversationService:
@@ -19,7 +18,7 @@ class ConversationService:
 
     def __init__(
         self,
-        conversation_repository: InMemoryConversationRepository,
+        conversation_repository: Any,
         requirement_extractor: RequirementExtractor,
     ) -> None:
         """
@@ -32,7 +31,9 @@ class ConversationService:
         self.conversation_repository = conversation_repository
         self.requirement_extractor = requirement_extractor
 
-    def create_conversation(self, initial_message: str | None = None) -> Conversation:
+    async def create_conversation(
+        self, initial_message: str | None = None
+    ) -> Conversation:
         """
         Create a conversation and optionally process the first user message.
 
@@ -43,19 +44,19 @@ class ConversationService:
             The created conversation.
         """
         conversation = Conversation()
-        self.conversation_repository.save(conversation)
+        await self.conversation_repository.save(conversation)
         if initial_message:
-            updated_conversation = self.handle_user_message(
+            updated_conversation = await self.handle_user_message(
                 conversation.id, initial_message
             )
             if updated_conversation is not None:
                 return updated_conversation
         assistant_message = self._build_missing_slots_reply(conversation.requirement)
         conversation.add_message(MessageRole.ASSISTANT, assistant_message)
-        self.conversation_repository.save(conversation)
+        await self.conversation_repository.save(conversation)
         return conversation
 
-    def get_conversation(self, conversation_id: str) -> Conversation | None:
+    async def get_conversation(self, conversation_id: str) -> Conversation | None:
         """
         Return a conversation by ID.
 
@@ -65,9 +66,9 @@ class ConversationService:
         Returns:
             The conversation when found.
         """
-        return self.conversation_repository.get(conversation_id)
+        return await self.conversation_repository.get(conversation_id)
 
-    def handle_user_message(
+    async def handle_user_message(
         self, conversation_id: str, message: str
     ) -> Conversation | None:
         """
@@ -80,7 +81,7 @@ class ConversationService:
         Returns:
             The updated conversation when found.
         """
-        conversation = self.conversation_repository.get(conversation_id)
+        conversation = await self.conversation_repository.get(conversation_id)
         if conversation is None:
             return None
         conversation.add_message(MessageRole.USER, message)
@@ -95,10 +96,10 @@ class ConversationService:
             conversation.state = ConversationState.CONFIRMING_REQUIREMENTS
             assistant_message = self._build_confirmation_reply(conversation.requirement)
         conversation.add_message(MessageRole.ASSISTANT, assistant_message)
-        self.conversation_repository.save(conversation)
+        await self.conversation_repository.save(conversation)
         return conversation
 
-    def confirm_requirements(self, conversation_id: str) -> Conversation | None:
+    async def confirm_requirements(self, conversation_id: str) -> Conversation | None:
         """
         Confirm the current requirement snapshot.
 
@@ -108,7 +109,7 @@ class ConversationService:
         Returns:
             The updated conversation when found.
         """
-        conversation = self.conversation_repository.get(conversation_id)
+        conversation = await self.conversation_repository.get(conversation_id)
         if conversation is None:
             return None
         missing_slots = conversation.requirement.missing_required_slots()
@@ -123,7 +124,7 @@ class ConversationService:
                 "Requirements confirmed. Itinerary generation can start."
             )
         conversation.add_message(MessageRole.ASSISTANT, assistant_message)
-        self.conversation_repository.save(conversation)
+        await self.conversation_repository.save(conversation)
         return conversation
 
     def _build_missing_slots_reply(self, requirement: TravelRequirement) -> str:

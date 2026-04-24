@@ -6,10 +6,11 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from smartour.api.dependencies import (
+    get_google_api_store,
     get_google_maps_client,
     get_itinerary_job_service,
     get_planning_service,
@@ -18,9 +19,14 @@ from smartour.api.dependencies import (
 from smartour.application.itinerary_job_service import ItineraryJobService
 from smartour.application.planning_service import PlanningService
 from smartour.core.config import Settings
-from smartour.core.errors import ExternalServiceError, PlanningInputError
+from smartour.core.errors import (
+    ExternalServiceError,
+    PlanningInputError,
+    RateLimitError,
+)
 from smartour.domain.itinerary import Itinerary
 from smartour.domain.itinerary_job import ItineraryJob, ItineraryJobStatus
+from smartour.infrastructure.google_api_store import SQLiteGoogleApiStore
 from smartour.integrations.google_maps.client import (
     GoogleMapsClient,
     create_google_maps_client,
@@ -82,8 +88,10 @@ async def generate_itinerary(
 )
 async def create_itinerary_job(
     conversation_id: str,
+    request: Request,
     background_tasks: BackgroundTasks,
     job_service: Annotated[ItineraryJobService, Depends(get_itinerary_job_service)],
+    api_store: Annotated[SQLiteGoogleApiStore, Depends(get_google_api_store)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> ItineraryJob:
     """
@@ -91,24 +99,33 @@ async def create_itinerary_job(
 
     Args:
         conversation_id: The source conversation ID.
+        request: The inbound HTTP request.
         background_tasks: The FastAPI background task manager.
         job_service: The itinerary job service.
+        api_store: The Google API cache and metrics store.
         settings: Runtime application settings.
 
     Returns:
         The queued itinerary job.
     """
     try:
-        job = job_service.create_job(conversation_id)
+        client_host = request.client.host if request.client else None
+        job = await job_service.create_job(conversation_id, client_host)
     except PlanningInputError as error:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(error)
+        ) from error
+    except RateLimitError as error:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(error)
         ) from error
     if job is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
         )
-    background_tasks.add_task(_run_itinerary_job, job.id, job_service, settings)
+    background_tasks.add_task(
+        _run_itinerary_job, job.id, job_service, api_store, settings
+    )
     return job
 
 
@@ -127,7 +144,7 @@ async def get_itinerary_job(
     Returns:
         The itinerary job.
     """
-    job = job_service.get_job(job_id)
+    job = await job_service.get_job(job_id)
     if job is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Itinerary job not found"
@@ -150,7 +167,7 @@ async def stream_itinerary_job_events(
     Returns:
         A text/event-stream response with job status payloads.
     """
-    job = job_service.get_job(job_id)
+    job = await job_service.get_job(job_id)
     if job is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Itinerary job not found"
@@ -177,7 +194,7 @@ async def get_itinerary(
     Returns:
         The generated itinerary.
     """
-    itinerary = planning_service.get_itinerary(itinerary_id)
+    itinerary = await planning_service.get_itinerary(itinerary_id)
     if itinerary is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Itinerary not found"
@@ -188,6 +205,7 @@ async def get_itinerary(
 async def _run_itinerary_job(
     job_id: str,
     job_service: ItineraryJobService,
+    api_store: SQLiteGoogleApiStore,
     settings: Settings,
 ) -> None:
     """
@@ -196,12 +214,17 @@ async def _run_itinerary_job(
     Args:
         job_id: The itinerary job ID.
         job_service: The itinerary job service.
+        api_store: The Google API cache and metrics store.
         settings: Runtime application settings.
     """
     timeout = httpx.Timeout(settings.google_maps_timeout_seconds)
     async with httpx.AsyncClient(timeout=timeout) as http_client:
         google_maps_client = create_google_maps_client(
-            settings.google_maps_api_key, http_client
+            settings.google_maps_api_key,
+            http_client,
+            api_store=api_store,
+            default_cache_ttl_seconds=settings.google_maps_cache_ttl_seconds,
+            routes_cache_ttl_seconds=settings.google_maps_routes_cache_ttl_seconds,
         )
         await job_service.run_job(job_id, google_maps_client)
 
@@ -222,7 +245,7 @@ async def _job_event_stream(
     previous_payload: dict[str, object] | None = None
     poll_count = 0
     while poll_count < JOB_EVENT_MAX_POLLS:
-        job = job_service.get_job(job_id)
+        job = await job_service.get_job(job_id)
         if job is None:
             yield _format_sse_event(
                 "itinerary_job_error",

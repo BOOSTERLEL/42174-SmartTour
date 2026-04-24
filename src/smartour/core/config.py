@@ -19,6 +19,21 @@ class Settings(BaseSettings):
     google_maps_timeout_seconds: float = Field(
         default=10.0, validation_alias="GOOGLE_MAPS_TIMEOUT_SECONDS"
     )
+    sqlite_path: str = Field(
+        default="data/smartour.sqlite3", validation_alias="SMARTOUR_SQLITE_PATH"
+    )
+    google_maps_cache_ttl_seconds: int = Field(
+        default=86400, validation_alias="GOOGLE_MAPS_CACHE_TTL_SECONDS"
+    )
+    google_maps_routes_cache_ttl_seconds: int = Field(
+        default=0, validation_alias="GOOGLE_MAPS_ROUTES_CACHE_TTL_SECONDS"
+    )
+    itinerary_job_rate_limit_count: int = Field(
+        default=5, validation_alias="ITINERARY_JOB_RATE_LIMIT_COUNT"
+    )
+    itinerary_job_rate_limit_window_seconds: int = Field(
+        default=3600, validation_alias="ITINERARY_JOB_RATE_LIMIT_WINDOW_SECONDS"
+    )
     openai_api_baseurl: str | None = Field(
         default=None, validation_alias="OPENAI_API_BASEURL"
     )
