@@ -27,10 +27,7 @@ from smartour.integrations.google_maps.client import (
     GoogleMapsClient,
     create_google_maps_client,
 )
-from smartour.integrations.openai.requirement_extractor import (
-    HybridRequirementExtractor,
-    OpenAIRequirementExtractor,
-)
+from smartour.integrations.requirement_model import RequirementModelExtractor
 
 
 @lru_cache
@@ -139,17 +136,17 @@ def get_requirement_extractor() -> RequirementExtractor:
     Returns:
         The configured requirement extractor.
     """
-    fallback_extractor = RuleBasedRequirementExtractor()
     settings = get_settings()
-    if not settings.has_openai_config():
-        return fallback_extractor
-    return HybridRequirementExtractor(
-        primary_extractor=OpenAIRequirementExtractor(
-            api_key=settings.openai_api_key or "",
-            model=settings.openai_api_model or "",
-            base_url=settings.openai_api_baseurl,
-        ),
-        fallback_extractor=fallback_extractor,
+    if settings.requirement_model_path:
+        return RequirementModelExtractor(
+            model_path=settings.requirement_model_path,
+            confidence_threshold=settings.requirement_model_confidence_threshold,
+        )
+    if settings.requirement_model_development_fallback_enabled:
+        return RuleBasedRequirementExtractor()
+    raise RuntimeError(
+        "REQUIREMENT_MODEL_PATH is required when requirement model development "
+        "fallback is disabled"
     )
 
 

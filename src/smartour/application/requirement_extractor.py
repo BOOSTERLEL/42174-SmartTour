@@ -1,4 +1,4 @@
-"""Temporary rule-based requirement extraction for early backend development."""
+"""Requirement extraction interfaces and development fallback."""
 
 import re
 from typing import Protocol
@@ -26,7 +26,7 @@ class RequirementExtractor(Protocol):
 
 class RuleBasedRequirementExtractor:
     """
-    Extracts structured travel requirement updates from user text using simple rules.
+    Extracts structured requirement updates with deterministic development rules.
     """
 
     def extract(self, message: str) -> TravelRequirementUpdate:
