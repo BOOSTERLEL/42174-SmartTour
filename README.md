@@ -4,7 +4,7 @@ Smartour is a conversational travel planning application. It collects trip requi
 
 The repository contains a Python FastAPI backend and a separate Next.js frontend:
 
-- `src/smartour`: backend API, domain models, services, SQLite persistence, Google Maps integrations, and optional OpenAI requirement extraction.
+- `src/smartour`: backend API, domain models, services, SQLite persistence, Google Maps integrations, and supervised requirement extraction.
 - `app`: browser workspace, typed backend API client, itinerary display, photo gallery, route maps, and theme support.
 
 ## Architecture
@@ -18,7 +18,7 @@ src/smartour/
 |-- core/             configuration and shared errors
 |-- domain/           Pydantic business models
 |-- infrastructure/   SQLite repositories, cache, metrics, and rate limiting
-|-- integrations/     Google Maps and OpenAI clients
+|-- integrations/     Google Maps and requirement model clients
 `-- main.py           FastAPI application entrypoint
 ```
 
@@ -33,8 +33,7 @@ See [docs/architecture.md](docs/architecture.md) for the detailed architecture g
 - Node.js 20 or newer
 - `pnpm`
 - A Google Maps Platform API key with the required server-side APIs enabled
-
-OpenAI configuration is optional. When OpenAI variables are missing, Smartour uses the rule-based requirement extractor.
+- A trained local requirement model artifact, or the development fallback enabled
 
 ## Environment
 
@@ -44,10 +43,10 @@ Create a repository-level `.env` file:
 GOOGLE_MAPS_API_KEY=your-server-side-google-maps-key
 SMARTOUR_SQLITE_PATH=data/smartour.sqlite3
 
-# Optional OpenAI extraction
-OPENAI_API_KEY=
-OPENAI_API_MODEL=
-OPENAI_API_BASEURL=
+# Supervised requirement extraction
+REQUIREMENT_MODEL_PATH=models/requirement_model/latest
+REQUIREMENT_MODEL_CONFIDENCE_THRESHOLD=0.35
+REQUIREMENT_MODEL_DEVELOPMENT_FALLBACK_ENABLED=true
 
 # Optional frontend and local development settings
 NEXT_PUBLIC_SMARTOUR_API_BASE_URL=http://127.0.0.1:8000/api
@@ -115,7 +114,9 @@ Integration probes:
 
 ```bash
 uv run smartour-google-maps-probe
-uv run smartour-openai-probe
+uv run python scripts/requirement_model/generate_data.py --validate
+uv run python scripts/requirement_model/train.py --quick
+uv run python scripts/requirement_model/evaluate.py --split test
 ```
 
 The Google Maps API also exposes a safe backend probe:

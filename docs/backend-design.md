@@ -572,7 +572,7 @@ Expected failure modes:
 - Opening hours conflict with planned time.
 - Route unavailable for selected travel mode.
 - Google API quota or billing error.
-- LLM extraction returns invalid JSON or contradictory updates.
+- Requirement model extraction returns invalid or contradictory updates.
 
 Fallback behavior:
 

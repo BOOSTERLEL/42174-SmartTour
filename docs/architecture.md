@@ -9,7 +9,7 @@ The implementation is split into two applications:
 - `src/smartour`: a Python 3.12 FastAPI backend that owns state, validation, planning, persistence, and external API calls.
 - `app`: a Next.js frontend that owns the user workspace, typed API client, route display, photo gallery, and interaction state.
 
-The core architectural rule is that deterministic backend code owns canonical state. LLM extraction can propose requirement updates, and Google Maps can supply place and route data, but Smartour validates, stores, merges, and exposes the final application models.
+The core architectural rule is that deterministic backend code owns canonical state. The supervised requirement model can propose requirement updates, and Google Maps can supply place and route data, but Smartour validates, stores, merges, and exposes the final application models.
 
 ## 2. System Context
 
@@ -26,7 +26,7 @@ FastAPI backend
   |
   +-- SQLite persistence
   +-- Google Maps Platform APIs
-  +-- OpenAI requirement extraction when configured
+  +-- Supervised requirement extraction model
 ```
 
 The frontend communicates with the backend through `/api` endpoints. The backend calls Google Maps services from the server so unrestricted server-side keys are never sent to the browser. The frontend may use a browser-safe Google Maps key for map rendering, but it can still operate with fallback route previews when that key is unavailable.
@@ -117,7 +117,7 @@ The application layer is implemented under `src/smartour/application`. It coordi
 | Service | Responsibility |
 |---|---|
 | `ConversationService` | Creates conversations, processes user turns, merges requirement updates, asks for missing slots, and confirms complete requirements |
-| `RequirementExtractor` | Defines the extraction interface and rule-based fallback extractor |
+| `RequirementExtractor` | Defines the extraction interface and development fallback extractor |
 | `ItineraryJobService` | Creates queued jobs, enforces rate limits, runs jobs, and updates conversation state when jobs finish |
 | `PlanningService` | Resolves destinations, discovers hotels and places, scores candidates, builds daily routes, supplements photos, renders guide markdown, and persists itineraries |
 
@@ -162,7 +162,7 @@ Google Maps integration is split by service:
 
 `GoogleMapsHttpClient` centralizes API keys, field masks, request hashing, caching, metrics, status error handling, invalid JSON handling, and sanitized exceptions. The service-specific clients expose higher-level operations so planning code does not construct raw HTTP requests directly.
 
-OpenAI integration is optional. When `OPENAI_API_KEY` and `OPENAI_API_MODEL` are configured, `HybridRequirementExtractor` uses OpenAI extraction first and falls back to the rule-based extractor. When OpenAI is not configured, the backend uses the rule-based extractor directly.
+Requirement extraction uses a supervised token-classification model when `REQUIREMENT_MODEL_PATH` points to a local model artifact. When no model path is configured, the backend uses an explicit development fallback extractor so local conversation tests and demos can still run without a trained artifact.
 
 ## 5. Frontend Architecture
 
@@ -282,12 +282,12 @@ Backend settings are loaded from environment variables and `.env` through `pydan
 | `GOOGLE_MAPS_TIMEOUT_SECONDS` | No | Google Maps HTTP timeout |
 | `GOOGLE_MAPS_CACHE_TTL_SECONDS` | No | Default cache TTL for Google API responses |
 | `GOOGLE_MAPS_ROUTES_CACHE_TTL_SECONDS` | No | Routes-specific cache TTL |
+| `REQUIREMENT_MODEL_PATH` | No | Local supervised requirement model artifact path |
+| `REQUIREMENT_MODEL_CONFIDENCE_THRESHOLD` | No | Minimum average slot-span confidence, default `0.35` |
+| `REQUIREMENT_MODEL_DEVELOPMENT_FALLBACK_ENABLED` | No | Enables the deterministic development fallback when no model path is configured |
 | `ITINERARY_JOB_CONVERSATION_RATE_LIMIT_COUNT` | No | Per-conversation job limit |
 | `ITINERARY_JOB_IP_RATE_LIMIT_COUNT` | No | Per-IP job limit |
 | `ITINERARY_JOB_RATE_LIMIT_WINDOW_SECONDS` | No | Rate limit window |
-| `OPENAI_API_KEY` | No | Enables OpenAI extraction when paired with a model |
-| `OPENAI_API_MODEL` | No | OpenAI model for requirement extraction |
-| `OPENAI_API_BASEURL` | No | Optional OpenAI-compatible base URL override |
 
 Frontend configuration:
 
