@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +83,7 @@ def parse_args() -> argparse.Namespace:
         "--clearml-task-name",
         default="Requirement Model Evaluation",
     )
+    parser.add_argument("--clearml-detailed-report", action="store_true")
     return parser.parse_args()
 
 
@@ -311,6 +314,211 @@ def compute_metrics(
     }
 
 
+def compute_slot_accuracy_rows(
+    gold_records: list[RequirementSlots],
+    predicted_records: list[RequirementSlots],
+) -> list[dict[str, float | int | str]]:
+    """
+    Compute per-slot accuracy rows.
+
+    Args:
+        gold_records: The gold structured slots.
+        predicted_records: The predicted structured slots.
+
+    Returns:
+        Per-slot accuracy rows.
+    """
+    rows: list[dict[str, float | int | str]] = []
+    for field_name in SLOT_FIELDS:
+        matches = 0
+        total = 0
+        for gold_slots, predicted_slots in zip(
+            gold_records, predicted_records, strict=True
+        ):
+            gold_values = normalize_slot_dict(gold_slots.model_dump())
+            predicted_values = normalize_slot_dict(predicted_slots.model_dump())
+            total += 1
+            if gold_values[field_name] == predicted_values[field_name]:
+                matches += 1
+        rows.append(
+            {
+                "field": field_name,
+                "matches": matches,
+                "total": total,
+                "accuracy": matches / max(total, 1),
+                "mismatches": total - matches,
+            }
+        )
+    return rows
+
+
+def compute_confusion_matrix(
+    gold_labels: list[list[str]],
+    predicted_labels: list[list[str]],
+) -> list[list[int]]:
+    """
+    Compute a BIO label confusion matrix.
+
+    Args:
+        gold_labels: The gold BIO labels.
+        predicted_labels: The predicted BIO labels.
+
+    Returns:
+        Matrix with gold labels on rows and predicted labels on columns.
+    """
+    label_indexes = {
+        label_name: label_index for label_index, label_name in enumerate(LABEL_NAMES)
+    }
+    matrix = [[0 for _label in LABEL_NAMES] for _label in LABEL_NAMES]
+    for gold_sequence, predicted_sequence in zip(
+        gold_labels, predicted_labels, strict=True
+    ):
+        for gold_label, predicted_label in zip(
+            gold_sequence, predicted_sequence, strict=False
+        ):
+            matrix[label_indexes[gold_label]][label_indexes[predicted_label]] += 1
+    return matrix
+
+
+def compute_label_metric_rows(
+    gold_labels: list[list[str]],
+    predicted_labels: list[list[str]],
+) -> list[dict[str, float | int | str]]:
+    """
+    Compute per-label precision, recall, and F1 rows.
+
+    Args:
+        gold_labels: The gold BIO labels.
+        predicted_labels: The predicted BIO labels.
+
+    Returns:
+        Per-label metric rows for non-O labels.
+    """
+    true_positives: Counter[str] = Counter()
+    false_positives: Counter[str] = Counter()
+    false_negatives: Counter[str] = Counter()
+    supports: Counter[str] = Counter()
+    for gold_sequence, predicted_sequence in zip(
+        gold_labels, predicted_labels, strict=True
+    ):
+        for gold_label, predicted_label in zip(
+            gold_sequence, predicted_sequence, strict=False
+        ):
+            if gold_label != "O":
+                supports[gold_label] += 1
+            if gold_label == predicted_label and gold_label != "O":
+                true_positives[gold_label] += 1
+            elif gold_label != predicted_label:
+                if predicted_label != "O":
+                    false_positives[predicted_label] += 1
+                if gold_label != "O":
+                    false_negatives[gold_label] += 1
+    rows: list[dict[str, float | int | str]] = []
+    for label_name in LABEL_NAMES:
+        if label_name == "O":
+            continue
+        true_positive_count = true_positives[label_name]
+        false_positive_count = false_positives[label_name]
+        false_negative_count = false_negatives[label_name]
+        precision = precision_score(true_positive_count, false_positive_count)
+        recall = recall_score(true_positive_count, false_negative_count)
+        rows.append(
+            {
+                "label": label_name,
+                "precision": precision,
+                "recall": recall,
+                "f1": f1_score(
+                    true_positive_count,
+                    false_positive_count,
+                    false_negative_count,
+                ),
+                "support": supports[label_name],
+                "true_positives": true_positive_count,
+                "false_positives": false_positive_count,
+                "false_negatives": false_negative_count,
+            }
+        )
+    return rows
+
+
+def precision_score(true_positive_count: int, false_positive_count: int) -> float:
+    """
+    Compute precision from confusion counts.
+
+    Args:
+        true_positive_count: The true-positive count.
+        false_positive_count: The false-positive count.
+
+    Returns:
+        The precision score.
+    """
+    denominator = true_positive_count + false_positive_count
+    if denominator == 0:
+        return 0.0
+    return true_positive_count / denominator
+
+
+def recall_score(true_positive_count: int, false_negative_count: int) -> float:
+    """
+    Compute recall from confusion counts.
+
+    Args:
+        true_positive_count: The true-positive count.
+        false_negative_count: The false-negative count.
+
+    Returns:
+        The recall score.
+    """
+    denominator = true_positive_count + false_negative_count
+    if denominator == 0:
+        return 0.0
+    return true_positive_count / denominator
+
+
+def build_failure_rows(
+    records: list[Any],
+    gold_records: list[RequirementSlots],
+    predicted_records: list[RequirementSlots],
+) -> list[dict[str, str]]:
+    """
+    Build rows describing slot-level evaluation failures.
+
+    Args:
+        records: Source training records.
+        gold_records: The gold structured slots.
+        predicted_records: The predicted structured slots.
+
+    Returns:
+        Failure rows.
+    """
+    rows: list[dict[str, str]] = []
+    for record, gold_slots, predicted_slots in zip(
+        records, gold_records, predicted_records, strict=True
+    ):
+        gold_values = normalize_slot_dict(gold_slots.model_dump())
+        predicted_values = normalize_slot_dict(predicted_slots.model_dump())
+        mismatch_fields = [
+            field_name
+            for field_name in SLOT_FIELDS
+            if gold_values[field_name] != predicted_values[field_name]
+        ]
+        if not mismatch_fields:
+            continue
+        rows.append(
+            {
+                "text": record.text,
+                "mismatch_fields": ", ".join(mismatch_fields),
+                "gold_slots": json.dumps(
+                    gold_values, ensure_ascii=False, sort_keys=True
+                ),
+                "predicted_slots": json.dumps(
+                    predicted_values, ensure_ascii=False, sort_keys=True
+                ),
+            }
+        )
+    return rows
+
+
 def normalize_slot_dict(values: dict[str, Any]) -> dict[str, Any]:
     """
     Normalize list field ordering for exact match comparison.
@@ -413,6 +621,22 @@ def evaluate(args: argparse.Namespace) -> dict[str, float]:
     Returns:
         The metric values.
     """
+    metrics, _diagnostics = evaluate_with_diagnostics(args)
+    return metrics
+
+
+def evaluate_with_diagnostics(
+    args: argparse.Namespace,
+) -> tuple[dict[str, float], dict[str, Any]]:
+    """
+    Evaluate the trained model and collect detailed diagnostics.
+
+    Args:
+        args: The parsed command-line arguments.
+
+    Returns:
+        The metric values and diagnostic details.
+    """
     records = load_jsonl(args.data_dir / f"{args.split}.jsonl")
     tokenizer = AutoTokenizer.from_pretrained(args.model_dir, use_fast=True)
     model = AutoModelForTokenClassification.from_pretrained(args.model_dir)
@@ -427,7 +651,20 @@ def evaluate(args: argparse.Namespace) -> dict[str, float]:
         predicted_slots.append(decode_slots(record.tokens, labels))
         gold_labels.append(record.labels)
         predicted_labels.append(labels)
-    return compute_metrics(gold_slots, predicted_slots, gold_labels, predicted_labels)
+    metrics = compute_metrics(
+        gold_slots,
+        predicted_slots,
+        gold_labels,
+        predicted_labels,
+    )
+    diagnostics = {
+        "confusion_matrix": compute_confusion_matrix(gold_labels, predicted_labels),
+        "labels": list(LABEL_NAMES),
+        "label_metrics": compute_label_metric_rows(gold_labels, predicted_labels),
+        "slot_metrics": compute_slot_accuracy_rows(gold_slots, predicted_slots),
+        "failures": build_failure_rows(records, gold_slots, predicted_slots),
+    }
+    return metrics, diagnostics
 
 
 def report_metrics_to_clearml(
@@ -452,6 +689,79 @@ def report_metrics_to_clearml(
     tracker.upload_artifact("metrics", dict(metrics))
 
 
+def report_diagnostics_to_clearml(
+    tracker: ClearMlTracker, diagnostics: Mapping[str, Any]
+) -> None:
+    """
+    Report detailed evaluation diagnostics to ClearML.
+
+    Args:
+        tracker: The optional ClearML tracker.
+        diagnostics: The computed evaluation diagnostics.
+    """
+    if not tracker.is_enabled:
+        return
+    tracker.report_confusion_matrix(
+        title="bio_labels",
+        series="confusion_matrix",
+        matrix=diagnostics["confusion_matrix"],
+        labels=diagnostics["labels"],
+    )
+    tracker.report_table(
+        title="evaluation_diagnostics",
+        series="label_metrics",
+        rows=build_metric_table_rows(diagnostics["label_metrics"], "label"),
+    )
+    tracker.report_table(
+        title="evaluation_diagnostics",
+        series="slot_metrics",
+        rows=build_metric_table_rows(diagnostics["slot_metrics"], "field"),
+    )
+    tracker.report_table(
+        title="evaluation_diagnostics",
+        series="failures",
+        rows=build_failure_table_rows(diagnostics["failures"]),
+    )
+    tracker.upload_artifact("evaluation_diagnostics", dict(diagnostics))
+
+
+def build_metric_table_rows(
+    rows: list[Mapping[str, Any]], name_key: str
+) -> list[list[str | int | float]]:
+    """
+    Build ClearML table rows from metric dictionaries.
+
+    Args:
+        rows: Metric rows.
+        name_key: The leading name column.
+
+    Returns:
+        Table rows including a header row.
+    """
+    if not rows:
+        return [[name_key]]
+    keys = [name_key, *(key for key in rows[0] if key != name_key)]
+    return [keys, *[[row[key] for key in keys] for row in rows]]
+
+
+def build_failure_table_rows(
+    rows: list[Mapping[str, str]]
+) -> list[list[str]]:
+    """
+    Build ClearML table rows for failed examples.
+
+    Args:
+        rows: Failure dictionaries.
+
+    Returns:
+        Table rows including a header row.
+    """
+    keys = ["text", "mismatch_fields", "gold_slots", "predicted_slots"]
+    if not rows:
+        return [keys, ["", "", "", ""]]
+    return [keys, *[[row[key] for key in keys] for row in rows]]
+
+
 def main() -> None:
     """
     Print evaluation metrics for a trained requirement model.
@@ -468,11 +778,14 @@ def main() -> None:
             "model_dir": str(args.model_dir),
             "split": args.split,
             "max_length": args.max_length,
+            "detailed_report": args.clearml_detailed_report,
         },
     )
     try:
-        metrics = evaluate(args)
+        metrics, diagnostics = evaluate_with_diagnostics(args)
         report_metrics_to_clearml(tracker, metrics)
+        if args.clearml_detailed_report:
+            report_diagnostics_to_clearml(tracker, diagnostics)
         for metric_name, metric_value in metrics.items():
             print(f"{metric_name}={metric_value:.4f}")
     finally:
