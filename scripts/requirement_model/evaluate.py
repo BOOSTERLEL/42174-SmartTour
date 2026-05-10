@@ -4,13 +4,26 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 import torch
-from schema import ID_TO_LABEL, LABEL_NAMES, RequirementSlots, load_jsonl
 from transformers import AutoModelForTokenClassification, AutoTokenizer
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from scripts.requirement_model.schema import (
+    ID_TO_LABEL,
+    LABEL_NAMES,
+    RequirementSlots,
+    load_jsonl,
+)
+from smartour.integrations.requirement_model.normalizer import (
+    normalize_span as normalize_runtime_span,
+)
 
 DEFAULT_DATA_DIR = Path("data/requirement_model")
 DEFAULT_MODEL_DIR = Path("models/requirement_model/quick")
@@ -40,16 +53,6 @@ CHINESE_NUMBER_VALUES = {
     "八": 8,
     "九": 9,
     "十": 10,
-}
-INTEREST_CANONICAL_VALUES = {
-    "美食": "food",
-    "吃": "food",
-    "博物馆": "museums",
-    "历史": "history",
-    "自然": "nature",
-    "公园": "nature",
-    "购物": "shopping",
-    "夜生活": "nightlife",
 }
 
 
@@ -228,24 +231,13 @@ def normalize_span(slot_name: str, value: str) -> str | int | None:
         The canonical value, or None when unsupported.
     """
     normalized_value = value.strip()
-    lower_value = normalized_value.lower()
     if slot_name == "TRIP_LENGTH_DAYS":
-        return normalize_number(lower_value)
+        return normalize_number(normalized_value)
     if slot_name in {"ADULTS", "CHILDREN"}:
-        if "no" in lower_value or "不带" in normalized_value:
+        if "no" in normalized_value.lower() or "不带" in normalized_value:
             return 0
-        return normalize_number(lower_value)
-    if slot_name == "BUDGET_LEVEL":
-        return normalize_budget(lower_value, normalized_value)
-    if slot_name == "TRAVEL_PACE":
-        return normalize_pace(lower_value, normalized_value)
-    if slot_name == "TRANSPORTATION_MODE":
-        return normalize_transportation(lower_value, normalized_value)
-    if slot_name == "LANGUAGE":
-        return normalize_language(lower_value, normalized_value)
-    if slot_name == "INTEREST":
-        return INTEREST_CANONICAL_VALUES.get(normalized_value, lower_value)
-    return normalized_value
+        return normalize_number(normalized_value)
+    return normalize_runtime_span(slot_name, normalized_value)
 
 
 def normalize_number(value: str) -> int | None:
@@ -264,98 +256,6 @@ def normalize_number(value: str) -> int | None:
     for text_value, number_value in CHINESE_NUMBER_VALUES.items():
         if text_value in value:
             return number_value
-    return None
-
-
-def normalize_budget(lower_value: str, value: str) -> str | None:
-    """
-    Normalize budget phrases.
-
-    Args:
-        lower_value: The lowercased value.
-        value: The original value.
-
-    Returns:
-        The canonical budget level.
-    """
-    if any(keyword in lower_value for keyword in ("cheap", "budget", "low")):
-        return "low"
-    if any(keyword in value for keyword in ("经济", "便宜")):
-        return "low"
-    if any(keyword in lower_value for keyword in ("moderate", "mid", "medium")):
-        return "medium"
-    if "中等" in value:
-        return "medium"
-    if any(keyword in lower_value for keyword in ("luxury", "high")):
-        return "high"
-    if "高端" in value:
-        return "high"
-    return None
-
-
-def normalize_pace(lower_value: str, value: str) -> str | None:
-    """
-    Normalize travel pace phrases.
-
-    Args:
-        lower_value: The lowercased value.
-        value: The original value.
-
-    Returns:
-        The canonical travel pace.
-    """
-    if any(keyword in lower_value for keyword in ("relaxed", "slow")):
-        return "relaxed"
-    if "轻松" in value:
-        return "relaxed"
-    if any(keyword in lower_value for keyword in ("balanced", "normal")):
-        return "balanced"
-    if "适中" in value:
-        return "balanced"
-    if any(keyword in lower_value for keyword in ("packed", "intensive")):
-        return "packed"
-    if "紧凑" in value:
-        return "packed"
-    return None
-
-
-def normalize_transportation(lower_value: str, value: str) -> str | None:
-    """
-    Normalize transportation mode phrases.
-
-    Args:
-        lower_value: The lowercased value.
-        value: The original value.
-
-    Returns:
-        The canonical transportation mode.
-    """
-    if any(keyword in lower_value for keyword in ("transit", "subway", "metro")):
-        return "transit"
-    if any(keyword in value for keyword in ("公共交通", "地铁", "公交")):
-        return "transit"
-    if "walk" in lower_value or "步行" in value:
-        return "walking"
-    if any(keyword in lower_value for keyword in ("drive", "car")) or "自驾" in value:
-        return "drive"
-    return None
-
-
-def normalize_language(lower_value: str, value: str) -> str | None:
-    """
-    Normalize requested guide language.
-
-    Args:
-        lower_value: The lowercased value.
-        value: The original value.
-
-    Returns:
-        The ISO 639-1 language code.
-    """
-    if "chinese" in lower_value or "中文" in value:
-        return "zh"
-    if "english" in lower_value or "英文" in value:
-        return "en"
     return None
 
 
@@ -384,9 +284,9 @@ def compute_metrics(
     for gold_slots, predicted_slots in zip(
         gold_records, predicted_records, strict=True
     ):
-        gold_values = gold_slots.model_dump()
-        predicted_values = predicted_slots.model_dump()
-        if normalize_slot_dict(gold_values) == normalize_slot_dict(predicted_values):
+        gold_values = normalize_slot_dict(gold_slots.model_dump())
+        predicted_values = normalize_slot_dict(predicted_slots.model_dump())
+        if gold_values == predicted_values:
             exact_matches += 1
         for field_name in SLOT_FIELDS:
             slot_total += 1
