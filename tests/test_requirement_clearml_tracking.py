@@ -6,11 +6,14 @@ from pathlib import Path
 
 import pytest
 
+from scripts.requirement_model.clearml_cleanup import validate_cleanup_mode
 from scripts.requirement_model.clearml_tracking import (
     CLEARML_ENV_NAMES,
     ClearMlConfigurationError,
     build_dataset_description,
+    clear_task_script_diff,
     ensure_clearml_environment,
+    force_clearml_requirements_env_freeze,
     initialize_clearml_task,
     load_clearml_environment,
 )
@@ -24,7 +27,12 @@ def test_disabled_tracker_does_not_require_clearml() -> None:
 
     assert not tracker.is_enabled
     tracker.report_scalar("metric", "value", 1.0, 1)
+    tracker.report_single_value("summary", 1.0)
+    tracker.report_table("table", "rows", [["name", "value"], ["ok", 1]])
+    tracker.report_histogram("histogram", "values", [1, 2, 3])
+    tracker.report_confusion_matrix("matrix", "labels", [[1, 0], [0, 1]], ["A", "B"])
     tracker.upload_artifact("artifact", {"ok": True})
+    assert tracker.register_model_package(Path("."), "model") is None
     tracker.close()
 
 
@@ -80,3 +88,93 @@ def test_build_dataset_description_sorts_split_counts() -> None:
     description = build_dataset_description({"train": 2, "test": 1})
 
     assert description == "Requirement model JSONL splits: test=1, train=2"
+
+
+def test_clear_task_script_diff_waits_then_clears() -> None:
+    """
+    Verify script diff clearing waits for repository detection.
+    """
+
+    class FakeTask:
+        """
+        Minimal ClearML task test double.
+        """
+
+        def __init__(self) -> None:
+            """
+            Initialize recorded calls.
+            """
+            self.did_wait = False
+            self.diff: str | None = None
+
+        def _wait_for_repo_detection(self, timeout: float) -> None:
+            """
+            Record repository detection wait.
+
+            Args:
+                timeout: The timeout passed by the helper.
+            """
+            self.did_wait = timeout == 30.0
+
+        def set_script(self, diff: str) -> None:
+            """
+            Record the script diff value.
+
+            Args:
+                diff: The diff value passed by the helper.
+            """
+            self.diff = diff
+
+    task = FakeTask()
+
+    clear_task_script_diff(task)
+
+    assert task.did_wait
+    assert task.diff == ""
+
+
+def test_force_clearml_requirements_env_freeze_uses_full_environment() -> None:
+    """
+    Verify ClearML package capture is forced before task initialization.
+    """
+
+    class FakeTask:
+        """
+        Minimal ClearML Task class test double.
+        """
+
+        did_force = False
+
+        @classmethod
+        def force_requirements_env_freeze(cls, force: bool = True) -> None:
+            """
+            Record the force flag.
+
+            Args:
+                force: Whether environment freezing was requested.
+            """
+            cls.did_force = force
+
+    force_clearml_requirements_env_freeze(FakeTask)
+
+    assert FakeTask.did_force
+
+
+def test_validate_cleanup_mode_requires_exactly_one_mode() -> None:
+    """
+    Verify destructive cleanup commands require an explicit single mode.
+    """
+    validate_cleanup_mode(is_previous_smoke_records=True, is_clear_project=False)
+    validate_cleanup_mode(is_previous_smoke_records=False, is_clear_project=True)
+
+    with pytest.raises(ClearMlConfigurationError, match="exactly one mode"):
+        validate_cleanup_mode(
+            is_previous_smoke_records=False,
+            is_clear_project=False,
+        )
+
+    with pytest.raises(ClearMlConfigurationError, match="exactly one mode"):
+        validate_cleanup_mode(
+            is_previous_smoke_records=True,
+            is_clear_project=True,
+        )
