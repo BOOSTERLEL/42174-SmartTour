@@ -15,6 +15,11 @@ from transformers import AutoModelForTokenClassification, AutoTokenizer
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from scripts.requirement_model.clearml_tracking import (
+    DEFAULT_CLEARML_PROJECT,
+    ClearMlTracker,
+    initialize_clearml_task,
+)
 from scripts.requirement_model.schema import (
     ID_TO_LABEL,
     LABEL_NAMES,
@@ -93,6 +98,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning-rate", type=float, default=5e-5)
     parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
     parser.add_argument("--quick", action="store_true")
+    parser.add_argument("--clearml", action="store_true")
+    parser.add_argument("--clearml-project", default=DEFAULT_CLEARML_PROJECT)
+    parser.add_argument(
+        "--clearml-task-name",
+        default="Requirement Model Training",
+    )
     return parser.parse_args()
 
 
@@ -217,16 +228,20 @@ def move_batch_to_device(
     }
 
 
-def train_model(args: argparse.Namespace) -> Path:
+def train_model(
+    args: argparse.Namespace, tracker: ClearMlTracker | None = None
+) -> Path:
     """
     Train and save a DistilBERT token-classification model.
 
     Args:
         args: The parsed command-line arguments.
+        tracker: Optional ClearML tracker.
 
     Returns:
         The model output directory.
     """
+    active_tracker = tracker or ClearMlTracker()
     torch.manual_seed(42174)
     model_name = QUICK_MODEL_NAME if args.quick else args.model_name
     output_dir = (
@@ -265,9 +280,16 @@ def train_model(args: argparse.Namespace) -> Path:
             total_loss += float(loss.detach())
         average_loss = total_loss / max(len(data_loader), 1)
         print(f"epoch {epoch_number}: loss={average_loss:.4f}")
+        active_tracker.report_scalar(
+            title="loss",
+            series="train",
+            value=average_loss,
+            iteration=epoch_number,
+        )
         if args.quick:
             break
     save_model_artifacts(output_dir, tokenizer, model, model_name, args.max_length)
+    active_tracker.upload_artifact("model", str(output_dir))
     return output_dir
 
 
@@ -307,8 +329,29 @@ def main() -> None:
     Train the requirement understanding model from JSONL data.
     """
     args = parse_args()
-    output_dir = train_model(args)
-    print(f"saved requirement model artifact to {output_dir}")
+    tracker = initialize_clearml_task(
+        is_enabled=args.clearml,
+        task_name=args.clearml_task_name,
+        project_name=args.clearml_project,
+        task_type="training",
+        tags=("requirement_model", "training"),
+        configuration={
+            "data_dir": str(args.data_dir),
+            "output_dir": str(args.output_dir),
+            "model_name": args.model_name,
+            "max_length": args.max_length,
+            "epochs": args.epochs,
+            "batch_size": args.batch_size,
+            "learning_rate": args.learning_rate,
+            "device": args.device,
+            "quick": args.quick,
+        },
+    )
+    try:
+        output_dir = train_model(args, tracker)
+        print(f"saved requirement model artifact to {output_dir}")
+    finally:
+        tracker.close()
 
 
 if __name__ == "__main__":

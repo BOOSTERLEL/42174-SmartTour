@@ -15,6 +15,11 @@ from transformers import AutoModelForTokenClassification, AutoTokenizer
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from scripts.requirement_model.clearml_tracking import (
+    DEFAULT_CLEARML_PROJECT,
+    ClearMlTracker,
+    initialize_clearml_task,
+)
 from scripts.requirement_model.schema import (
     ID_TO_LABEL,
     LABEL_NAMES,
@@ -70,6 +75,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-dir", type=Path, default=DEFAULT_MODEL_DIR)
     parser.add_argument("--split", default="test")
     parser.add_argument("--max-length", type=int, default=192)
+    parser.add_argument("--clearml", action="store_true")
+    parser.add_argument("--clearml-project", default=DEFAULT_CLEARML_PROJECT)
+    parser.add_argument(
+        "--clearml-task-name",
+        default="Requirement Model Evaluation",
+    )
     return parser.parse_args()
 
 
@@ -419,14 +430,53 @@ def evaluate(args: argparse.Namespace) -> dict[str, float]:
     return compute_metrics(gold_slots, predicted_slots, gold_labels, predicted_labels)
 
 
+def report_metrics_to_clearml(
+    tracker: ClearMlTracker, metrics: dict[str, float]
+) -> None:
+    """
+    Report evaluation metrics to ClearML.
+
+    Args:
+        tracker: The optional ClearML tracker.
+        metrics: The computed evaluation metrics.
+    """
+    if not tracker.is_enabled:
+        return
+    for metric_name, metric_value in sorted(metrics.items()):
+        tracker.report_scalar(
+            title="evaluation",
+            series=metric_name,
+            value=metric_value,
+            iteration=0,
+        )
+    tracker.upload_artifact("metrics", dict(metrics))
+
+
 def main() -> None:
     """
     Print evaluation metrics for a trained requirement model.
     """
     args = parse_args()
-    metrics = evaluate(args)
-    for metric_name, metric_value in metrics.items():
-        print(f"{metric_name}={metric_value:.4f}")
+    tracker = initialize_clearml_task(
+        is_enabled=args.clearml,
+        task_name=args.clearml_task_name,
+        project_name=args.clearml_project,
+        task_type="testing",
+        tags=("requirement_model", "evaluation"),
+        configuration={
+            "data_dir": str(args.data_dir),
+            "model_dir": str(args.model_dir),
+            "split": args.split,
+            "max_length": args.max_length,
+        },
+    )
+    try:
+        metrics = evaluate(args)
+        report_metrics_to_clearml(tracker, metrics)
+        for metric_name, metric_value in metrics.items():
+            print(f"{metric_name}={metric_value:.4f}")
+    finally:
+        tracker.close()
 
 
 if __name__ == "__main__":
