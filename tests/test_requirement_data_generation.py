@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from scripts.requirement_model.audit_data import build_data_profile
 from scripts.requirement_model.generate_data import (
     DataGenerationError,
     deduplicate_records,
@@ -126,3 +127,26 @@ def test_generate_records_supports_english_only_language() -> None:
 
     with pytest.raises(ValueError, match="only English"):
         generate_records(1, 42174, "zh")
+
+
+def test_build_data_profile_reports_lengths_labels_and_slots() -> None:
+    """
+    Verify data profile statistics summarize records deterministically.
+    """
+    first_record = make_record_from_marked_text(
+        "Plan [DESTINATION|Tokyo] for [ADULTS|2 adults]."
+    )
+    second_record = make_record_from_marked_text(
+        "Need [TRIP_LENGTH_DAYS|4 days] in [DESTINATION|Paris]."
+    )
+
+    profile = build_data_profile({"train": [first_record, second_record]})
+
+    summary = profile["split_summaries"]["train"]
+    assert summary["records"] == 2
+    assert summary["max_tokens"] >= summary["average_tokens"]
+    assert profile["label_counts"]["train"]["B-DESTINATION"] == 2
+    assert profile["slot_coverage"]["train"]["destination"] == 2
+    assert profile["slot_coverage"]["train"]["adults"] == 1
+    assert len(profile["token_lengths"]["train"]) == 2
+    assert len(profile["text_lengths"]["train"]) == 2
