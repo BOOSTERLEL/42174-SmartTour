@@ -185,9 +185,40 @@ uv run python scripts/requirement_model/train.py --quick --clearml
 uv run python scripts/requirement_model/evaluate.py --model-dir models/requirement_model/latest --split reviewed_test --clearml
 ```
 
+Use the detailed reporting flags when the ClearML task should include richer
+data, model, and evaluation views:
+
+```bash
+uv run python scripts/requirement_model/audit_data.py --data-dir data/requirement_model --reviewed-test --strict --clearml --clearml-report-data-profile
+uv run python scripts/requirement_model/train.py --quick --clearml --clearml-model-report
+uv run python scripts/requirement_model/evaluate.py --model-dir models/requirement_model/latest --split reviewed_test --clearml --clearml-detailed-report
+```
+
+The detailed data audit reports split counts, token and text length histograms,
+BIO label distribution, and slot coverage. The detailed evaluation reports a BIO
+confusion matrix, per-label precision/recall/F1, per-slot accuracy, and failed
+examples. The model report uploads model configuration, label maps, and the file
+manifest; add `--clearml-register-model` to register the trained output model in
+ClearML.
+
+Run the local workflow DAG when the ClearML UI should show the audit, quick
+training, and evaluation steps as a pipeline without using a ClearML Agent queue:
+
+```bash
+uv run python scripts/requirement_model/clearml_pipeline.py --local --quick
+```
+
+For a full local training pipeline, omit `--quick` and pass the desired training
+settings:
+
+```bash
+uv run python scripts/requirement_model/clearml_pipeline.py --local --device cuda --batch-size 4 --epochs 3
+```
+
 For full training, remove `--quick` and pass the desired training device and
 batch size. The training task reports per-epoch loss and uploads the saved model
-directory as a ClearML artifact.
+directory as a ClearML artifact. ClearML tasks created by these scripts clear
+the captured script diff so local git changes are not stored in the task record.
 
 ## Main API Endpoints
 
