@@ -14,6 +14,11 @@ from typing import Any
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from scripts.requirement_model.clearml_tracking import (
+    DEFAULT_CLEARML_PROJECT,
+    ClearMlTracker,
+    initialize_clearml_task,
+)
 from scripts.requirement_model.llm_client import (
     LlmRequestError,
     OpenAiAugmentationClient,
@@ -246,6 +251,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--llm-max-tokens", type=int, default=4096)
     parser.add_argument("--checkpoint-path", type=Path, default=None)
     parser.add_argument("--validate", action="store_true")
+    parser.add_argument("--clearml", action="store_true")
+    parser.add_argument("--clearml-project", default=DEFAULT_CLEARML_PROJECT)
+    parser.add_argument(
+        "--clearml-task-name",
+        default="Requirement Model Data Generation",
+    )
     return parser.parse_args()
 
 
@@ -1628,41 +1639,88 @@ def collect_covered_fields(records: list[RequirementTrainingRecord]) -> set[str]
     return covered_fields
 
 
+def report_generation_to_clearml(
+    tracker: ClearMlTracker,
+    split_counts: dict[str, int],
+    split_paths: dict[str, Path],
+) -> None:
+    """
+    Report generated data split counts and files to ClearML.
+
+    Args:
+        tracker: The optional ClearML tracker.
+        split_counts: Record counts by split name.
+        split_paths: Output paths by split name.
+    """
+    if not tracker.is_enabled:
+        return
+    for index, split_name in enumerate(sorted(split_counts)):
+        tracker.report_scalar(
+            title="records",
+            series=split_name,
+            value=float(split_counts[split_name]),
+            iteration=index,
+        )
+    tracker.upload_artifact("split_counts", dict(split_counts))
+    for split_name, split_path in sorted(split_paths.items()):
+        tracker.upload_artifact(f"{split_name}_jsonl", str(split_path))
+
+
 def main() -> None:
     """
     Generate and optionally validate requirement model data.
     """
     args = parse_args()
-    if args.template_only and args.llm_augment:
-        raise ValueError("--template-only and --llm-augment cannot be combined")
-    if args.llm_augment:
-        records = generate_llm_augmented_records(
-            count=args.count,
-            seed=args.seed,
-            language=args.language,
-            output_dir=args.output_dir,
-            checkpoint_path=args.checkpoint_path,
-            llm_seed_count=args.llm_seed_count,
-            llm_target_count=args.llm_target_count,
-            llm_max_rounds=args.llm_max_rounds,
-            llm_temperature=args.llm_temperature,
-            llm_max_tokens=args.llm_max_tokens,
-        )
-    else:
-        records = generate_records(args.count, args.seed, args.language)
-    split_paths = write_splits(args.output_dir, records)
-    if args.validate:
-        split_counts = validate_output(args.output_dir)
-    else:
-        split_counts = {
-            split_name: len(load_jsonl(path))
-            for split_name, path in split_paths.items()
-        }
-    counts_text = ", ".join(
-        f"{split_name}={split_count}"
-        for split_name, split_count in sorted(split_counts.items())
+    tracker = initialize_clearml_task(
+        is_enabled=args.clearml,
+        task_name=args.clearml_task_name,
+        project_name=args.clearml_project,
+        task_type="data_processing",
+        tags=("requirement_model", "data_generation"),
+        configuration={
+            "output_dir": str(args.output_dir),
+            "count": args.count,
+            "seed": args.seed,
+            "language": args.language,
+            "template_only": args.template_only,
+            "llm_augment": args.llm_augment,
+            "validate": args.validate,
+        },
     )
-    print(f"wrote requirement model data to {args.output_dir}: {counts_text}")
+    try:
+        if args.template_only and args.llm_augment:
+            raise ValueError("--template-only and --llm-augment cannot be combined")
+        if args.llm_augment:
+            records = generate_llm_augmented_records(
+                count=args.count,
+                seed=args.seed,
+                language=args.language,
+                output_dir=args.output_dir,
+                checkpoint_path=args.checkpoint_path,
+                llm_seed_count=args.llm_seed_count,
+                llm_target_count=args.llm_target_count,
+                llm_max_rounds=args.llm_max_rounds,
+                llm_temperature=args.llm_temperature,
+                llm_max_tokens=args.llm_max_tokens,
+            )
+        else:
+            records = generate_records(args.count, args.seed, args.language)
+        split_paths = write_splits(args.output_dir, records)
+        if args.validate:
+            split_counts = validate_output(args.output_dir)
+        else:
+            split_counts = {
+                split_name: len(load_jsonl(path))
+                for split_name, path in split_paths.items()
+            }
+        report_generation_to_clearml(tracker, split_counts, split_paths)
+        counts_text = ", ".join(
+            f"{split_name}={split_count}"
+            for split_name, split_count in sorted(split_counts.items())
+        )
+        print(f"wrote requirement model data to {args.output_dir}: {counts_text}")
+    finally:
+        tracker.close()
 
 
 if __name__ == "__main__":
