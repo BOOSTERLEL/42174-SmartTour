@@ -160,6 +160,35 @@ uv run python scripts/requirement_model/train.py --quick
 uv run python scripts/requirement_model/evaluate.py --split reviewed_test
 ```
 
+## ClearML Requirement Model Tracking
+
+The requirement model scripts can publish workflow state to ClearML when the
+`--clearml` flag is supplied. ClearML tracking is disabled by default, so local
+data, training, and evaluation commands still work without ClearML credentials.
+
+Configure the repository `.env` file with ClearML credentials:
+
+```text
+CLEARML_API_ACCESS_KEY=your-clearml-access-key
+CLEARML_API_SECRET_KEY=your-clearml-secret-key
+CLEARML_API_HOST=https://api.clear.ml
+CLEARML_WEB_HOST=https://app.clear.ml
+CLEARML_FILES_HOST=https://files.clear.ml
+```
+
+The default ClearML project is `Smartour`. Publish the audited requirement model
+dataset, run tracked quick training, and report reviewed-test metrics:
+
+```bash
+uv run python scripts/requirement_model/audit_data.py --data-dir data/requirement_model --reviewed-test --strict --clearml
+uv run python scripts/requirement_model/train.py --quick --clearml
+uv run python scripts/requirement_model/evaluate.py --model-dir models/requirement_model/latest --split reviewed_test --clearml
+```
+
+For full training, remove `--quick` and pass the desired training device and
+batch size. The training task reports per-epoch loss and uploads the saved model
+directory as a ClearML artifact.
+
 ## Main API Endpoints
 
 | Method | Path | Purpose |
