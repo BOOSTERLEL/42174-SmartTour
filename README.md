@@ -114,9 +114,10 @@ Integration probes:
 
 ```bash
 uv run smartour-google-maps-probe
-uv run python scripts/requirement_model/generate_data.py --validate
+uv run python scripts/requirement_model/generate_data.py --count 3000 --language en --llm-augment --validate
+uv run python scripts/requirement_model/audit_data.py --data-dir data/requirement_model --reviewed-test --strict
 uv run python scripts/requirement_model/train.py --quick
-uv run python scripts/requirement_model/evaluate.py --split test
+uv run python scripts/requirement_model/evaluate.py --split reviewed_test
 ```
 
 The Google Maps API also exposes a safe backend probe:
@@ -124,6 +125,39 @@ The Google Maps API also exposes a safe backend probe:
 ```text
 GET /api/google-maps/probe
 GET /api/google-maps/probe?live=true
+```
+
+## Requirement Model Data
+
+The active requirement model data workflow generates English-only training data.
+It writes 3000 validated JSONL records under `data/requirement_model`: 2400
+training records, 300 validation records, 300 test records, and a manually
+reviewed `reviewed_test.jsonl` split for evaluation.
+
+LLM augmentation uses the official OpenAI Python SDK with OpenAI-compatible chat
+completion fields. Configure the primary endpoint with `OPENAI_API_BASEURL`,
+`OPENAI_API_KEY`, and `OPENAI_API_MODEL`. Optional backup variables
+`OPENAI_API_BASEURL_BACKUP`, `OPENAI_API_KEY_BACKUP`, and
+`OPENAI_API_MODEL_BACKUP` are used only when the primary endpoint is unavailable
+or retryable failures exhaust the primary attempts.
+
+Generate and validate the full dataset:
+
+```bash
+uv run python scripts/requirement_model/generate_data.py --count 3000 --language en --llm-augment --validate
+```
+
+Audit the generated and reviewed splits:
+
+```bash
+uv run python scripts/requirement_model/audit_data.py --data-dir data/requirement_model --reviewed-test --strict
+```
+
+Run a quick training smoke test and evaluate the reviewed split:
+
+```bash
+uv run python scripts/requirement_model/train.py --quick
+uv run python scripts/requirement_model/evaluate.py --split reviewed_test
 ```
 
 ## Main API Endpoints
