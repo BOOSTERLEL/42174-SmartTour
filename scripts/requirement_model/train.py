@@ -104,6 +104,8 @@ def parse_args() -> argparse.Namespace:
         "--clearml-task-name",
         default="Requirement Model Training",
     )
+    parser.add_argument("--clearml-model-report", action="store_true")
+    parser.add_argument("--clearml-register-model", action="store_true")
     return parser.parse_args()
 
 
@@ -324,6 +326,129 @@ def save_model_artifacts(
     )
 
 
+def build_model_report(output_dir: Path) -> dict[str, Any]:
+    """
+    Build model configuration and file manifest details.
+
+    Args:
+        output_dir: The saved model directory.
+
+    Returns:
+        JSON-compatible model report details.
+    """
+    config_path = output_dir / "requirement_model_config.json"
+    config: dict[str, Any] = {}
+    if config_path.exists():
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    manifest = build_model_manifest(output_dir)
+    total_size_bytes = sum(int(row["size_bytes"]) for row in manifest)
+    return {
+        "config": config,
+        "label_map": dict(LABEL_TO_ID),
+        "manifest": manifest,
+        "total_size_bytes": total_size_bytes,
+    }
+
+
+def build_model_manifest(output_dir: Path) -> list[dict[str, str | int]]:
+    """
+    Build a deterministic file manifest for a model directory.
+
+    Args:
+        output_dir: The saved model directory.
+
+    Returns:
+        File manifest rows.
+    """
+    if not output_dir.exists():
+        return []
+    rows: list[dict[str, str | int]] = []
+    for path in sorted(output_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        rows.append(
+            {
+                "path": path.relative_to(output_dir).as_posix(),
+                "size_bytes": path.stat().st_size,
+            }
+        )
+    return rows
+
+
+def report_model_details_to_clearml(
+    tracker: ClearMlTracker,
+    output_dir: Path,
+    should_register_model: bool,
+) -> None:
+    """
+    Report model metadata and optionally register an output model package.
+
+    Args:
+        tracker: The optional ClearML tracker.
+        output_dir: The saved model directory.
+        should_register_model: Whether to register a ClearML output model.
+    """
+    if not tracker.is_enabled:
+        return
+    model_report = build_model_report(output_dir)
+    tracker.upload_artifact("model_report", model_report)
+    tracker.report_single_value(
+        "model_total_size_bytes",
+        float(model_report["total_size_bytes"]),
+    )
+    tracker.report_table(
+        title="model",
+        series="file_manifest",
+        rows=build_model_manifest_rows(model_report["manifest"]),
+    )
+    tracker.report_table(
+        title="model",
+        series="label_map",
+        rows=build_label_map_rows(model_report["label_map"]),
+    )
+    if should_register_model:
+        tracker.register_model_package(
+            model_path=output_dir,
+            name="requirement_model",
+            config=model_report["config"],
+            labels=model_report["label_map"],
+        )
+
+
+def build_model_manifest_rows(
+    manifest: list[dict[str, str | int]]
+) -> list[list[str | int]]:
+    """
+    Build ClearML table rows for a model manifest.
+
+    Args:
+        manifest: Model manifest dictionaries.
+
+    Returns:
+        Table rows including a header row.
+    """
+    rows: list[list[str | int]] = [["path", "size_bytes"]]
+    for row in manifest:
+        rows.append([row["path"], row["size_bytes"]])
+    return rows
+
+
+def build_label_map_rows(label_map: dict[str, int]) -> list[list[str | int]]:
+    """
+    Build ClearML table rows for label mappings.
+
+    Args:
+        label_map: Label identifiers keyed by label name.
+
+    Returns:
+        Table rows including a header row.
+    """
+    rows: list[list[str | int]] = [["label", "id"]]
+    for label_name, label_id in sorted(label_map.items()):
+        rows.append([label_name, label_id])
+    return rows
+
+
 def main() -> None:
     """
     Train the requirement understanding model from JSONL data.
@@ -345,10 +470,18 @@ def main() -> None:
             "learning_rate": args.learning_rate,
             "device": args.device,
             "quick": args.quick,
+            "model_report": args.clearml_model_report,
+            "register_model": args.clearml_register_model,
         },
     )
     try:
         output_dir = train_model(args, tracker)
+        if args.clearml_model_report or args.clearml_register_model:
+            report_model_details_to_clearml(
+                tracker,
+                output_dir,
+                should_register_model=args.clearml_register_model,
+            )
         print(f"saved requirement model artifact to {output_dir}")
     finally:
         tracker.close()
