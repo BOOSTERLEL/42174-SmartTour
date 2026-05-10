@@ -4,19 +4,24 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 import torch
-from schema import (
+from torch.utils.data import DataLoader, Dataset
+from transformers import AutoModelForTokenClassification, AutoTokenizer
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from scripts.requirement_model.schema import (
     ID_TO_LABEL,
     LABEL_NAMES,
     LABEL_TO_ID,
     RequirementTrainingRecord,
     load_jsonl,
 )
-from torch.utils.data import DataLoader, Dataset
-from transformers import AutoModelForTokenClassification, AutoTokenizer
 
 DEFAULT_DATA_DIR = Path("data/requirement_model")
 DEFAULT_OUTPUT_DIR = Path("models/requirement_model/latest")
@@ -86,6 +91,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=5e-5)
+    parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
     parser.add_argument("--quick", action="store_true")
     return parser.parse_args()
 
@@ -168,6 +174,49 @@ def load_training_records(
     return records
 
 
+def resolve_device(device_name: str) -> torch.device:
+    """
+    Resolve the requested training device.
+
+    Args:
+        device_name: The requested device name.
+
+    Returns:
+        The PyTorch device to use.
+
+    Raises:
+        RuntimeError: Raised when CUDA is requested but unavailable.
+    """
+    if device_name == "cpu":
+        return torch.device("cpu")
+    if device_name == "cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA training was requested, but CUDA is unavailable")
+        return torch.device("cuda")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    return torch.device("cpu")
+
+
+def move_batch_to_device(
+    batch: dict[str, torch.Tensor], device: torch.device
+) -> dict[str, torch.Tensor]:
+    """
+    Move one batch of tensors to the training device.
+
+    Args:
+        batch: The CPU batch tensors from the data loader.
+        device: The training device.
+
+    Returns:
+        The batch tensors on the training device.
+    """
+    return {
+        key: tensor.to(device, non_blocking=device.type == "cuda")
+        for key, tensor in batch.items()
+    }
+
+
 def train_model(args: argparse.Namespace) -> Path:
     """
     Train and save a DistilBERT token-classification model.
@@ -185,26 +234,30 @@ def train_model(args: argparse.Namespace) -> Path:
     )
     records = load_training_records(args.data_dir, args.quick)
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+    device = resolve_device(args.device)
+    print(f"training_device={device}")
     model = AutoModelForTokenClassification.from_pretrained(
         model_name,
         num_labels=len(LABEL_NAMES),
         id2label=ID_TO_LABEL,
         label2id=LABEL_TO_ID,
         ignore_mismatched_sizes=True,
-    )
+    ).to(device)
     dataset = RequirementTokenDataset(records, tokenizer, args.max_length)
     data_loader = DataLoader(
         dataset,
         batch_size=args.batch_size,
         shuffle=True,
         collate_fn=collate_features,
+        pin_memory=device.type == "cuda",
     )
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
     model.train()
     for epoch_number in range(1, args.epochs + 1):
         total_loss = 0.0
         for batch in data_loader:
-            optimizer.zero_grad()
+            batch = move_batch_to_device(batch, device)
+            optimizer.zero_grad(set_to_none=True)
             outputs = model(**batch)
             loss = outputs.loss
             loss.backward()
