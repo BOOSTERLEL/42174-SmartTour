@@ -110,7 +110,7 @@ class RequirementTrainingRecord(BaseModel):
 
 def tokenize_text(text: str) -> list[str]:
     """
-    Tokenize English and Chinese requirement text for synthetic label generation.
+    Tokenize requirement text for synthetic label generation.
 
     Args:
         text: The source text.
