@@ -13,9 +13,10 @@ let googleMapsPromise: Promise<GoogleMapsRuntime> | null = null;
  * Runtime Google Maps classes used by the route map.
  */
 export type GoogleMapsRuntime = {
+  AdvancedMarkerElement: typeof google.maps.marker.AdvancedMarkerElement;
   LatLngBounds: typeof google.maps.LatLngBounds;
   Map: typeof google.maps.Map;
-  Marker: typeof google.maps.Marker;
+  PinElement: typeof google.maps.marker.PinElement;
   Polyline: typeof google.maps.Polyline;
 };
 
@@ -27,7 +28,7 @@ export type GoogleMap = google.maps.Map;
 /**
  * Google Maps marker instance used by Smartour.
  */
-export type GoogleMarker = google.maps.Marker;
+export type GoogleMarker = google.maps.marker.AdvancedMarkerElement;
 
 /**
  * Google Maps polyline instance used by Smartour.
@@ -63,11 +64,14 @@ export function loadGoogleMaps(apiKey: string): Promise<GoogleMapsRuntime> {
  */
 async function loadGoogleMapsRuntime(): Promise<GoogleMapsRuntime> {
   const mapsLibrary = (await importLibrary("maps")) as google.maps.MapsLibrary;
-  await importLibrary("marker");
+  const markerLibrary = (await importLibrary(
+    "marker",
+  )) as google.maps.MarkerLibrary;
   return {
+    AdvancedMarkerElement: markerLibrary.AdvancedMarkerElement,
     LatLngBounds: google.maps.LatLngBounds,
     Map: mapsLibrary.Map,
-    Marker: google.maps.Marker,
+    PinElement: markerLibrary.PinElement,
     Polyline: google.maps.Polyline,
   };
 }

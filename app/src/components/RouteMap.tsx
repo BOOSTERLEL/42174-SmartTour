@@ -40,6 +40,7 @@ const DEFAULT_MAP_CENTER = { lat: -33.8688, lng: 151.2093 };
 const DEFAULT_MAP_ZOOM = 12;
 const MAP_BOUNDS_PADDING = 48;
 const ROUTE_STROKE_COLOR = "#0a72ef";
+const ROUTE_MARKER_GLYPH_COLOR = "#ffffff";
 
 type RouteMapProps = {
   activeDay: ItineraryDay | null;
@@ -112,7 +113,7 @@ export function RouteMap({ activeDay, isPlanning }: RouteMapProps) {
    */
   const clearGoogleMapOverlays = useCallback(() => {
     for (const marker of markerRefs.current) {
-      marker.setMap(null);
+      marker.map = null;
     }
     for (const polyline of polylineRefs.current) {
       polyline.setMap(null);
@@ -160,8 +161,8 @@ export function RouteMap({ activeDay, isPlanning }: RouteMapProps) {
       const position = toGoogleLatLng(coordinate);
       bounds.extend(position);
       markerRefs.current.push(
-        new googleMaps.Marker({
-          label: `${index + 1}`,
+        createAdvancedMarker(googleMaps, {
+          glyphText: `${index + 1}`,
           map,
           position,
           title: item.place.name,
@@ -195,6 +196,7 @@ export function RouteMap({ activeDay, isPlanning }: RouteMapProps) {
           clickableIcons: true,
           disableDefaultUI: true,
           gestureHandling: "cooperative",
+          mapId: googleMaps.Map.DEMO_MAP_ID,
           zoom: DEFAULT_MAP_ZOOM,
         });
         clearGoogleMapOverlays();
@@ -303,7 +305,7 @@ export function RouteLegMap({ destination, leg, origin }: RouteLegMapProps) {
    */
   const clearGoogleMapOverlays = useCallback(() => {
     for (const marker of markerRefs.current) {
-      marker.setMap(null);
+      marker.map = null;
     }
     for (const polyline of polylineRefs.current) {
       polyline.setMap(null);
@@ -355,8 +357,8 @@ export function RouteLegMap({ destination, leg, origin }: RouteLegMapProps) {
         const position = toGoogleLatLng(coordinate);
         bounds.extend(position);
         markerRefs.current.push(
-          new googleMaps.Marker({
-            label: markerPlace.label,
+          createAdvancedMarker(googleMaps, {
+            glyphText: markerPlace.label,
             map,
             position,
             title: markerPlace.place?.name,
@@ -388,6 +390,7 @@ export function RouteLegMap({ destination, leg, origin }: RouteLegMapProps) {
           clickableIcons: true,
           disableDefaultUI: true,
           gestureHandling: "cooperative",
+          mapId: googleMaps.Map.DEMO_MAP_ID,
           zoom: DEFAULT_MAP_ZOOM,
         });
         clearGoogleMapOverlays();
@@ -676,6 +679,36 @@ function toGoogleLatLng(coordinate: RouteCoordinate) {
     lat: coordinate.latitude,
     lng: coordinate.longitude,
   };
+}
+
+/**
+ * Create a Google Maps advanced marker with a numbered pin.
+ *
+ * @param googleMaps - The Google Maps runtime constructors.
+ * @param options - The marker creation options.
+ * @returns The created advanced marker.
+ */
+function createAdvancedMarker(
+  googleMaps: Awaited<ReturnType<typeof loadGoogleMaps>>,
+  options: {
+    glyphText: string;
+    map: GoogleMap;
+    position: google.maps.LatLngLiteral;
+    title: string | undefined;
+  },
+): GoogleMarker {
+  const pinElement = new googleMaps.PinElement({
+    background: ROUTE_STROKE_COLOR,
+    borderColor: ROUTE_STROKE_COLOR,
+    glyphColor: ROUTE_MARKER_GLYPH_COLOR,
+    glyphText: options.glyphText,
+  });
+  return new googleMaps.AdvancedMarkerElement({
+    content: pinElement,
+    map: options.map,
+    position: options.position,
+    title: options.title,
+  });
 }
 
 /**
