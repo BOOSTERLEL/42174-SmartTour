@@ -225,6 +225,7 @@ async def _run_itinerary_job(
             api_store=api_store,
             default_cache_ttl_seconds=settings.google_maps_cache_ttl_seconds,
             routes_cache_ttl_seconds=settings.google_maps_routes_cache_ttl_seconds,
+            job_id=job_id,
         )
         await job_service.run_job(job_id, google_maps_client)
 

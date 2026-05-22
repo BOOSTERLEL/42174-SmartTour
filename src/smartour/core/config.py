@@ -28,6 +28,18 @@ class Settings(BaseSettings):
     google_maps_routes_cache_ttl_seconds: int = Field(
         default=0, validation_alias="GOOGLE_MAPS_ROUTES_CACHE_TTL_SECONDS"
     )
+    google_maps_places_unit_cost_usd: float = Field(
+        default=0.0, validation_alias="GOOGLE_MAPS_PLACES_UNIT_COST_USD"
+    )
+    google_maps_routes_unit_cost_usd: float = Field(
+        default=0.0, validation_alias="GOOGLE_MAPS_ROUTES_UNIT_COST_USD"
+    )
+    google_maps_geocoding_unit_cost_usd: float = Field(
+        default=0.0, validation_alias="GOOGLE_MAPS_GEOCODING_UNIT_COST_USD"
+    )
+    google_maps_timezone_unit_cost_usd: float = Field(
+        default=0.0, validation_alias="GOOGLE_MAPS_TIMEZONE_UNIT_COST_USD"
+    )
     requirement_model_path: str | None = Field(
         default=None, validation_alias="REQUIREMENT_MODEL_PATH"
     )

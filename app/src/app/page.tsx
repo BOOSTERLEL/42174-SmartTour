@@ -10,13 +10,18 @@ import {
   Check,
   ChevronDown,
   Clock,
+  Copy,
+  Download,
   ExternalLink,
+  FileText,
   Footprints,
   Hotel,
+  Link2,
   LoaderCircle,
   Moon,
   MoreHorizontal,
   Navigation,
+  RefreshCw,
   Send,
   Ship,
   Sparkles,
@@ -27,15 +32,20 @@ import {
 import {
   confirmConversation,
   createConversation,
+  createItineraryShareLink,
   createItineraryJob,
+  getGoogleMapsCostSummary,
   getApiBaseUrl,
   getItinerary,
   getItineraryJob,
+  getItineraryReport,
   type ConversationResponse,
+  type GoogleMapsCostSummary,
   type Itinerary,
   type ItineraryDay,
   type ItineraryItem,
   type ItineraryJob,
+  type ItineraryReport,
   type PlaceRecommendation,
   type RouteLeg,
   type TravelRequirement,
@@ -88,13 +98,22 @@ export default function Home() {
   );
   const [job, setJob] = useState<ItineraryJob | null>(null);
   const [itinerary, setItinerary] = useState<Itinerary | null>(null);
+  const [costSummary, setCostSummary] = useState<GoogleMapsCostSummary | null>(
+    null,
+  );
+  const [report, setReport] = useState<ItineraryReport | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [activeDayIndex, setActiveDayIndex] = useState(0);
   const [expandedRouteIndex, setExpandedRouteIndex] = useState<number | null>(
     null,
   );
   const [isSending, setIsSending] = useState(false);
   const [isPlanning, setIsPlanning] = useState(false);
+  const [isRefreshingCosts, setIsRefreshingCosts] = useState(false);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [isCreatingShare, setIsCreatingShare] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -162,6 +181,9 @@ export default function Home() {
     }
     setIsPlanning(true);
     setErrorMessage(null);
+    setActionMessage(null);
+    setReport(null);
+    setShareUrl(null);
     try {
       const confirmedConversation = await confirmConversation(
         conversation.conversation_id,
@@ -172,6 +194,7 @@ export default function Home() {
         confirmedConversation.conversation_id,
       );
       setJob(queuedJob);
+      await refreshCostSummary(queuedJob.id);
       appendMessage(
         "assistant",
         "Planning job queued. I am checking progress.",
@@ -198,6 +221,7 @@ export default function Home() {
     for (let pollIndex = 0; pollIndex < JOB_MAX_POLLS; pollIndex += 1) {
       const latestJob = await getItineraryJob(jobId);
       setJob(latestJob);
+      await refreshCostSummary(latestJob.id);
       if (latestJob.status === "succeeded" && latestJob.itinerary_id !== null) {
         return getItinerary(latestJob.itinerary_id);
       }
@@ -209,6 +233,110 @@ export default function Home() {
       await sleep(JOB_POLL_INTERVAL_MS);
     }
     throw new Error("Itinerary generation timed out");
+  }
+
+  /**
+   * Refresh backend Google Maps cost monitoring data.
+   *
+   * @param jobId - Optional itinerary job identifier.
+   */
+  async function refreshCostSummary(jobId: string | null = job?.id ?? null) {
+    setIsRefreshingCosts(true);
+    try {
+      const nextCostSummary = await getGoogleMapsCostSummary(jobId);
+      setCostSummary(nextCostSummary);
+    } catch (error) {
+      handleRequestError(error);
+    } finally {
+      setIsRefreshingCosts(false);
+    }
+  }
+
+  /**
+   * Generate a backend Markdown report for the current itinerary.
+   */
+  async function handleGenerateReport() {
+    if (itinerary === null || isGeneratingReport) {
+      return;
+    }
+    setIsGeneratingReport(true);
+    setActionMessage(null);
+    try {
+      const nextReport = await getItineraryReport(itinerary.id);
+      setReport(nextReport);
+      setActionMessage("Report generated.");
+    } catch (error) {
+      handleRequestError(error);
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  }
+
+  /**
+   * Create and copy a public share link for the current itinerary.
+   */
+  async function handleCreateShareLink() {
+    if (itinerary === null || isCreatingShare) {
+      return;
+    }
+    setIsCreatingShare(true);
+    setActionMessage(null);
+    try {
+      const shareLink = await createItineraryShareLink(itinerary.id);
+      const nextShareUrl = `${window.location.origin}${shareLink.share_path}`;
+      setShareUrl(nextShareUrl);
+      const didCopy = await copyText(nextShareUrl);
+      setActionMessage(didCopy ? "Share link copied." : "Share link ready.");
+    } catch (error) {
+      handleRequestError(error);
+    } finally {
+      setIsCreatingShare(false);
+    }
+  }
+
+  /**
+   * Copy the current report Markdown to the clipboard.
+   */
+  async function handleCopyReport() {
+    if (report === null) {
+      return;
+    }
+    const didCopy = await copyText(report.markdown);
+    setActionMessage(didCopy ? "Report copied." : "Report ready.");
+  }
+
+  /**
+   * Download the current report Markdown as a local file.
+   */
+  function handleDownloadReport() {
+    if (report === null) {
+      return;
+    }
+    const blob = new Blob([report.markdown], {
+      type: "text/markdown;charset=utf-8",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${safeFilename(report.title)}.md`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+    setActionMessage("Report downloaded.");
+  }
+
+  /**
+   * Copy text to the clipboard when the browser permits it.
+   *
+   * @param text - The text to copy.
+   * @returns True when the clipboard write succeeds.
+   */
+  async function copyText(text: string): Promise<boolean> {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -277,9 +405,13 @@ export default function Home() {
               setConversation(null);
               setJob(null);
               setItinerary(null);
+              setCostSummary(null);
+              setReport(null);
+              setShareUrl(null);
               setExpandedRouteIndex(null);
               setInputValue(DEFAULT_PROMPT);
               setErrorMessage(null);
+              setActionMessage(null);
             }}
             type="button"
           >
@@ -498,6 +630,134 @@ export default function Home() {
                 />
                 <SummaryRow label="Job status" value={job?.status ?? "-"} />
               </div>
+            </SummaryBlock>
+
+            <SummaryBlock icon={<BarChart2 size={16} />} title="Cost monitor">
+              <div className={styles.summaryStack}>
+                <SummaryRow
+                  label="Requests"
+                  value={formatNumber(costSummary?.total_requests)}
+                />
+                <SummaryRow
+                  label="Billable est."
+                  value={formatNumber(costSummary?.estimated_billable_requests)}
+                />
+                <SummaryRow
+                  label="Cache hits"
+                  value={formatNumber(costSummary?.cache_hits)}
+                />
+                <SummaryRow
+                  label="Errors"
+                  value={formatNumber(costSummary?.error_requests)}
+                />
+                <SummaryRow
+                  label="Est. cost"
+                  value={formatCost(costSummary?.estimated_cost_usd)}
+                />
+              </div>
+              {costSummary !== null && costSummary.services.length > 0 ? (
+                <div className={styles.costServices}>
+                  {costSummary.services.slice(0, 4).map((service) => (
+                    <div
+                      className={styles.costServiceRow}
+                      key={`${service.service}-${service.endpoint}`}
+                    >
+                      <span>{formatServiceName(service.service)}</span>
+                      <span>
+                        {service.estimated_billable_requests}/
+                        {service.total_requests}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <button
+                className={`btn btn-secondary ${styles.summaryAction}`}
+                disabled={isRefreshingCosts}
+                onClick={() => {
+                  void refreshCostSummary();
+                }}
+                type="button"
+              >
+                {isRefreshingCosts ? (
+                  <LoaderCircle className={styles.spin} size={16} />
+                ) : (
+                  <RefreshCw size={16} />
+                )}
+                Refresh
+              </button>
+            </SummaryBlock>
+
+            <SummaryBlock icon={<FileText size={16} />} title="Outputs">
+              <div className={styles.actionGrid}>
+                <button
+                  className="btn btn-primary"
+                  disabled={itinerary === null || isGeneratingReport}
+                  onClick={handleGenerateReport}
+                  type="button"
+                >
+                  {isGeneratingReport ? (
+                    <LoaderCircle className={styles.spin} size={16} />
+                  ) : (
+                    <FileText size={16} />
+                  )}
+                  Report
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  disabled={itinerary === null || isCreatingShare}
+                  onClick={handleCreateShareLink}
+                  type="button"
+                >
+                  {isCreatingShare ? (
+                    <LoaderCircle className={styles.spin} size={16} />
+                  ) : (
+                    <Link2 size={16} />
+                  )}
+                  Share
+                </button>
+              </div>
+
+              {report !== null ? (
+                <div className={styles.reportPanel}>
+                  <div className={styles.reportActions}>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={handleCopyReport}
+                      type="button"
+                    >
+                      <Copy size={16} />
+                      Copy
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={handleDownloadReport}
+                      type="button"
+                    >
+                      <Download size={16} />
+                      Download
+                    </button>
+                  </div>
+                  <pre className={styles.reportPreview}>{report.markdown}</pre>
+                </div>
+              ) : null}
+
+              {shareUrl !== null ? (
+                <a
+                  className={styles.shareLink}
+                  href={shareUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  {shareUrl}
+                </a>
+              ) : null}
+
+              {actionMessage !== null ? (
+                <div className="text-caption text-secondary">
+                  {actionMessage}
+                </div>
+              ) : null}
             </SummaryBlock>
 
             <div className={styles.summarySection}>
@@ -950,6 +1210,57 @@ function buildStatusLabel(
     return conversation.state.replaceAll("_", " ");
   }
   return "Backend idle";
+}
+
+/**
+ * Format an optional count for summary display.
+ *
+ * @param value - Optional numeric value.
+ * @returns A readable count.
+ */
+function formatNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return "-";
+  }
+  return value.toLocaleString();
+}
+
+/**
+ * Format an optional estimated cost value.
+ *
+ * @param value - Optional estimated USD cost.
+ * @returns A readable estimated cost.
+ */
+function formatCost(value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return "-";
+  }
+  return `$${value.toFixed(6)}`;
+}
+
+/**
+ * Format a backend service key for display.
+ *
+ * @param service - The backend service key.
+ * @returns A readable service name.
+ */
+function formatServiceName(service: string): string {
+  return service.replaceAll("_", " ");
+}
+
+/**
+ * Build a safe filename stem from a report title.
+ *
+ * @param title - The report title.
+ * @returns A filesystem-safe filename stem.
+ */
+function safeFilename(title: string): string {
+  const filename = title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return filename || "smartour-report";
 }
 
 /**

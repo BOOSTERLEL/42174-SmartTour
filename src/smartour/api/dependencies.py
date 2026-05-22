@@ -6,12 +6,15 @@ from functools import lru_cache
 import httpx
 
 from smartour.application.conversation_service import ConversationService
+from smartour.application.cost_monitoring_service import CostMonitoringService
 from smartour.application.itinerary_job_service import ItineraryJobService
 from smartour.application.planning_service import PlanningService
+from smartour.application.report_service import ReportService
 from smartour.application.requirement_extractor import (
     RequirementExtractor,
     RuleBasedRequirementExtractor,
 )
+from smartour.application.share_service import ShareService
 from smartour.core.config import Settings
 from smartour.infrastructure.database import SQLiteDatabase
 from smartour.infrastructure.google_api_store import SQLiteGoogleApiStore
@@ -23,6 +26,7 @@ from smartour.infrastructure.repositories.itineraries import SQLiteItineraryRepo
 from smartour.infrastructure.repositories.itinerary_jobs import (
     SQLiteItineraryJobRepository,
 )
+from smartour.infrastructure.repositories.shares import SQLiteItineraryShareRepository
 from smartour.integrations.google_maps.client import (
     GoogleMapsClient,
     create_google_maps_client,
@@ -86,6 +90,17 @@ def get_itinerary_job_repository() -> SQLiteItineraryJobRepository:
 
 
 @lru_cache
+def get_itinerary_share_repository() -> SQLiteItineraryShareRepository:
+    """
+    Create the process-local itinerary share-link repository.
+
+    Returns:
+        The SQLite itinerary share-link repository.
+    """
+    return SQLiteItineraryShareRepository(get_database())
+
+
+@lru_cache
 def get_google_api_store() -> SQLiteGoogleApiStore:
     """
     Create the Google API cache and metrics store.
@@ -94,6 +109,26 @@ def get_google_api_store() -> SQLiteGoogleApiStore:
         The SQLite-backed Google API store.
     """
     return SQLiteGoogleApiStore(get_database())
+
+
+@lru_cache
+def get_cost_monitoring_service() -> CostMonitoringService:
+    """
+    Create the Google Maps cost monitoring service.
+
+    Returns:
+        The cost monitoring service.
+    """
+    settings = get_settings()
+    return CostMonitoringService(
+        google_api_store=get_google_api_store(),
+        unit_costs_usd={
+            "places": settings.google_maps_places_unit_cost_usd,
+            "routes": settings.google_maps_routes_unit_cost_usd,
+            "geocoding": settings.google_maps_geocoding_unit_cost_usd,
+            "timezone": settings.google_maps_timezone_unit_cost_usd,
+        },
+    )
 
 
 @lru_cache
@@ -175,6 +210,32 @@ def get_planning_service() -> PlanningService:
     return PlanningService(
         conversation_repository=get_conversation_repository(),
         itinerary_repository=get_itinerary_repository(),
+    )
+
+
+@lru_cache
+def get_report_service() -> ReportService:
+    """
+    Create the itinerary report service.
+
+    Returns:
+        The report service.
+    """
+    return ReportService(itinerary_repository=get_itinerary_repository())
+
+
+@lru_cache
+def get_share_service() -> ShareService:
+    """
+    Create the itinerary share-link service.
+
+    Returns:
+        The share-link service.
+    """
+    return ShareService(
+        itinerary_repository=get_itinerary_repository(),
+        share_repository=get_itinerary_share_repository(),
+        report_service=get_report_service(),
     )
 
 

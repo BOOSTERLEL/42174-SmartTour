@@ -32,6 +32,13 @@ CREATE TABLE IF NOT EXISTS itinerary_jobs (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS itinerary_share_links (
+    token TEXT PRIMARY KEY,
+    itinerary_id TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS google_api_cache_entries (
     cache_key TEXT PRIMARY KEY,
     service TEXT NOT NULL,
@@ -46,6 +53,7 @@ CREATE TABLE IF NOT EXISTS google_api_cache_entries (
 
 CREATE TABLE IF NOT EXISTS google_api_request_metrics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id TEXT,
     service TEXT NOT NULL,
     endpoint TEXT NOT NULL,
     cache_hit INTEGER NOT NULL,
@@ -65,6 +73,9 @@ CREATE TABLE IF NOT EXISTS rate_limit_events (
 
 CREATE INDEX IF NOT EXISTS idx_google_api_cache_expires_at
 ON google_api_cache_entries(expires_at);
+
+CREATE INDEX IF NOT EXISTS idx_itinerary_share_links_itinerary_id
+ON itinerary_share_links(itinerary_id);
 
 CREATE INDEX IF NOT EXISTS idx_google_api_metrics_created_at
 ON google_api_request_metrics(created_at);
@@ -122,5 +133,59 @@ class SQLiteDatabase:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             async with aiosqlite.connect(str(self.path)) as connection:
                 await connection.executescript(SCHEMA_SQL)
+                await _ensure_column(
+                    connection,
+                    "google_api_request_metrics",
+                    "job_id",
+                    "TEXT",
+                )
+                await connection.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS
+                        idx_google_api_metrics_job_id_created_at
+                    ON google_api_request_metrics(job_id, created_at)
+                    """
+                )
                 await connection.commit()
             self.is_initialized = True
+
+
+async def _ensure_column(
+    connection: aiosqlite.Connection,
+    table_name: str,
+    column_name: str,
+    column_type: str,
+) -> None:
+    """
+    Add a nullable SQLite column when an existing database predates it.
+
+    Args:
+        connection: The SQLite connection to migrate.
+        table_name: The table to inspect.
+        column_name: The nullable column name.
+        column_type: The SQLite column type declaration.
+    """
+    if await _column_exists(connection, table_name, column_name):
+        return
+    await connection.execute(
+        f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+    )
+
+
+async def _column_exists(
+    connection: aiosqlite.Connection, table_name: str, column_name: str
+) -> bool:
+    """
+    Return whether a SQLite table contains a column.
+
+    Args:
+        connection: The SQLite connection to inspect.
+        table_name: The table to inspect.
+        column_name: The column to find.
+
+    Returns:
+        True when the table includes the column.
+    """
+    async with connection.execute(f"PRAGMA table_info({table_name})") as cursor:
+        rows = await cursor.fetchall()
+    return any(row[1] == column_name for row in rows)

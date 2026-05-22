@@ -168,6 +168,67 @@ export type ItineraryJob = {
 };
 
 /**
+ * Cost and usage summary for one Google Maps service endpoint.
+ */
+export type GoogleMapsCostBreakdown = {
+  service: string;
+  endpoint: string;
+  total_requests: number;
+  estimated_billable_requests: number;
+  cache_hits: number;
+  error_requests: number;
+  average_duration_ms: number;
+  estimated_cost_usd: number;
+};
+
+/**
+ * Backend-owned Google Maps usage and estimated cost summary.
+ */
+export type GoogleMapsCostSummary = {
+  job_id: string | null;
+  window_hours: number;
+  currency: string;
+  generated_at: string;
+  total_requests: number;
+  estimated_billable_requests: number;
+  cache_hits: number;
+  error_requests: number;
+  average_duration_ms: number;
+  estimated_cost_usd: number;
+  services: GoogleMapsCostBreakdown[];
+};
+
+/**
+ * Generated itinerary report returned by the backend.
+ */
+export type ItineraryReport = {
+  itinerary_id: string;
+  title: string;
+  format: "markdown";
+  markdown: string;
+  generated_at: string;
+};
+
+/**
+ * Share link creation response returned by the backend.
+ */
+export type ShareLinkResponse = {
+  token: string;
+  itinerary_id: string;
+  share_path: string;
+  created_at: string;
+};
+
+/**
+ * Public read-only shared itinerary returned by the backend.
+ */
+export type SharedItineraryResponse = {
+  token: string;
+  itinerary: Itinerary;
+  report: ItineraryReport;
+};
+
+/**
  * Return the configured backend API base URL.
  *
  * @returns The normalized API base URL without a trailing slash.
@@ -268,6 +329,72 @@ export async function getItineraryJob(jobId: string): Promise<ItineraryJob> {
 export async function getItinerary(itineraryId: string): Promise<Itinerary> {
   return requestJson<Itinerary>(
     `/itineraries/${encodeURIComponent(itineraryId)}`,
+  );
+}
+
+/**
+ * Fetch a backend Google Maps cost summary.
+ *
+ * @param jobId - Optional itinerary job identifier.
+ * @param windowHours - Lookback window in hours.
+ * @returns The backend cost summary.
+ */
+export async function getGoogleMapsCostSummary(
+  jobId: string | null,
+  windowHours = 24,
+): Promise<GoogleMapsCostSummary> {
+  const searchParams = new URLSearchParams();
+  searchParams.set("window_hours", String(windowHours));
+  if (jobId !== null) {
+    searchParams.set("job_id", jobId);
+  }
+  return requestJson<GoogleMapsCostSummary>(
+    `/costs/google-maps?${searchParams.toString()}`,
+  );
+}
+
+/**
+ * Generate a Markdown report for an itinerary.
+ *
+ * @param itineraryId - The itinerary identifier.
+ * @returns The generated report.
+ */
+export async function getItineraryReport(
+  itineraryId: string,
+): Promise<ItineraryReport> {
+  return requestJson<ItineraryReport>(
+    `/itineraries/${encodeURIComponent(itineraryId)}/report`,
+  );
+}
+
+/**
+ * Create a public share link for an itinerary.
+ *
+ * @param itineraryId - The itinerary identifier.
+ * @returns The created share link.
+ */
+export async function createItineraryShareLink(
+  itineraryId: string,
+): Promise<ShareLinkResponse> {
+  return requestJson<ShareLinkResponse>(
+    `/itineraries/${encodeURIComponent(itineraryId)}/share-links`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+/**
+ * Fetch a shared itinerary by token.
+ *
+ * @param token - The share token.
+ * @returns The shared itinerary response.
+ */
+export async function getSharedItinerary(
+  token: string,
+): Promise<SharedItineraryResponse> {
+  return requestJson<SharedItineraryResponse>(
+    `/shared-itineraries/${encodeURIComponent(token)}`,
   );
 }
 

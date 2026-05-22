@@ -120,6 +120,7 @@ class SQLiteGoogleApiStore:
         cache_hit: bool,
         status_code: int | None,
         duration_ms: float,
+        job_id: str | None = None,
         error_message: str | None = None,
     ) -> None:
         """
@@ -131,18 +132,20 @@ class SQLiteGoogleApiStore:
             cache_hit: Whether the request was served from cache.
             status_code: The HTTP status code when available.
             duration_ms: The request duration in milliseconds.
+            job_id: The itinerary job that caused the request when available.
             error_message: The sanitized error message when available.
         """
         async with self.database.connect() as connection:
             await connection.execute(
                 """
                 INSERT INTO google_api_request_metrics (
-                    service, endpoint, cache_hit, status_code, duration_ms,
+                    job_id, service, endpoint, cache_hit, status_code, duration_ms,
                     error_message, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    job_id,
                     service,
                     endpoint,
                     int(cache_hit),
@@ -152,6 +155,58 @@ class SQLiteGoogleApiStore:
                     _utc_now().isoformat(),
                 ),
             )
+
+    async def summarize_request_metrics(
+        self, since: datetime, job_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        """
+        Return grouped Google API request metric summaries.
+
+        Args:
+            since: The inclusive lower bound for metric creation time.
+            job_id: Optional itinerary job filter.
+
+        Returns:
+            Summary rows grouped by Google service and endpoint.
+        """
+        where_clauses = ["created_at >= ?"]
+        parameters: list[Any] = [since.isoformat()]
+        if job_id is not None:
+            where_clauses.append("job_id = ?")
+            parameters.append(job_id)
+        where_sql = " AND ".join(where_clauses)
+        async with (
+            self.database.connect() as connection,
+            connection.execute(
+                f"""
+                SELECT
+                    service,
+                    endpoint,
+                    COUNT(*) AS total_requests,
+                    SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END) AS cache_hits,
+                    SUM(CASE WHEN cache_hit = 0 THEN 1 ELSE 0 END)
+                        AS estimated_billable_requests,
+                    SUM(
+                        CASE
+                            WHEN status_code IS NULL
+                                OR status_code >= 400
+                                OR error_message IS NOT NULL
+                            THEN 1
+                            ELSE 0
+                        END
+                    ) AS error_requests,
+                    SUM(duration_ms) AS total_duration_ms,
+                    AVG(duration_ms) AS average_duration_ms
+                FROM google_api_request_metrics
+                WHERE {where_sql}
+                GROUP BY service, endpoint
+                ORDER BY service, endpoint
+                """,
+                parameters,
+            ) as cursor,
+        ):
+            rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
 
     async def count_metrics(self) -> int:
         """

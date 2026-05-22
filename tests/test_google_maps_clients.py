@@ -1,6 +1,7 @@
 """Tests for Google Maps client request construction and response handling."""
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -157,6 +158,47 @@ async def test_google_maps_http_client_caches_successful_requests(
     assert first_payload == second_payload
     assert request_count == 1
     assert await api_store.count_metrics() == 2
+
+
+@pytest.mark.asyncio
+async def test_google_maps_http_client_records_job_metric_context(
+    tmp_path: Path,
+) -> None:
+    """
+    Verify that Google Maps request metrics keep itinerary job context.
+    """
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        """
+        Handle the mocked Places request.
+
+        Args:
+            request: The outgoing HTTP request.
+
+        Returns:
+            A mocked successful Places response.
+        """
+        return httpx.Response(200, json={"places": [{"id": "place-1"}]})
+
+    database = SQLiteDatabase(str(tmp_path / "smartour.sqlite3"))
+    api_store = SQLiteGoogleApiStore(database)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        base_client = GoogleMapsHttpClient(
+            "test-key",
+            http_client,
+            api_store=api_store,
+            job_id="job_1",
+        )
+        client = GooglePlacesClient(base_client)
+
+        await client.search_text("coffee in Sydney", page_size=1)
+
+    rows = await api_store.summarize_request_metrics(
+        datetime.now(tz=UTC) - timedelta(hours=1), "job_1"
+    )
+    assert len(rows) == 1
+    assert rows[0]["service"] == "places"
+    assert rows[0]["total_requests"] == 1
 
 
 def _json_body(request: httpx.Request) -> dict[str, Any]:

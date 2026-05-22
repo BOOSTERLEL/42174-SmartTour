@@ -9,9 +9,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from smartour.api.routes.conversations import router as conversations_router
+from smartour.api.routes.costs import router as costs_router
 from smartour.api.routes.google_maps import router as google_maps_router
 from smartour.api.routes.health import router as health_router
 from smartour.api.routes.itineraries import router as itineraries_router
+from smartour.api.routes.reports import router as reports_router
+from smartour.api.routes.shares import router as shares_router
 
 DEFAULT_CORS_ALLOWED_ORIGINS = (
     "http://localhost:3000",
@@ -33,6 +36,9 @@ def create_app() -> FastAPI:
     app.include_router(health_router, prefix="/api")
     app.include_router(conversations_router, prefix="/api")
     app.include_router(itineraries_router, prefix="/api")
+    app.include_router(reports_router, prefix="/api")
+    app.include_router(shares_router, prefix="/api")
+    app.include_router(costs_router, prefix="/api")
     app.include_router(google_maps_router, prefix="/api")
     return app
 

@@ -29,6 +29,7 @@ class GoogleMapsHttpClient:
         api_store: Any | None = None,
         default_cache_ttl_seconds: int = 0,
         routes_cache_ttl_seconds: int = 0,
+        job_id: str | None = None,
     ) -> None:
         """
         Initialize the low-level Google Maps HTTP client.
@@ -39,12 +40,14 @@ class GoogleMapsHttpClient:
             api_store: Optional cache and metrics store.
             default_cache_ttl_seconds: Default cache TTL for idempotent requests.
             routes_cache_ttl_seconds: Cache TTL for Routes API requests.
+            job_id: Optional itinerary job context for request metrics.
         """
         self.api_key = api_key
         self.http_client = http_client
         self.api_store = api_store
         self.default_cache_ttl_seconds = default_cache_ttl_seconds
         self.routes_cache_ttl_seconds = routes_cache_ttl_seconds
+        self.job_id = job_id
 
     async def get_json(
         self, service: str, url: str, params: dict[str, Any] | None = None
@@ -277,7 +280,13 @@ class GoogleMapsHttpClient:
         if self.api_store is None:
             return
         await self.api_store.record_request_metric(
-            service, endpoint, cache_hit, status_code, duration_ms, error_message
+            service,
+            endpoint,
+            cache_hit,
+            status_code,
+            duration_ms,
+            job_id=self.job_id,
+            error_message=error_message,
         )
 
     def _cache_ttl(self, service: str) -> int:
@@ -313,6 +322,7 @@ def create_google_maps_client(
     api_store: Any | None = None,
     default_cache_ttl_seconds: int = 0,
     routes_cache_ttl_seconds: int = 0,
+    job_id: str | None = None,
 ) -> GoogleMapsClient:
     """
     Create an aggregated Google Maps client group.
@@ -323,6 +333,7 @@ def create_google_maps_client(
         api_store: Optional cache and metrics store.
         default_cache_ttl_seconds: Default cache TTL for idempotent requests.
         routes_cache_ttl_seconds: Cache TTL for Routes API requests.
+        job_id: Optional itinerary job context for request metrics.
 
     Returns:
         The aggregated Google Maps client group.
@@ -338,6 +349,7 @@ def create_google_maps_client(
         api_store=api_store,
         default_cache_ttl_seconds=default_cache_ttl_seconds,
         routes_cache_ttl_seconds=routes_cache_ttl_seconds,
+        job_id=job_id,
     )
     return GoogleMapsClient(
         places=GooglePlacesClient(base_client),

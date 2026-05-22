@@ -739,6 +739,84 @@
   gap: 8px;
 }
 
+.costServices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background-color: var(--bg-hover);
+  border-radius: 6px;
+}
+
+.costServiceRow {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.costServiceRow span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.actionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.summaryAction {
+  gap: 6px;
+}
+
+.actionGrid :global(.btn),
+.reportActions :global(.btn) {
+  gap: 6px;
+  min-width: 0;
+}
+
+.reportPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reportActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.reportPreview {
+  max-height: 220px;
+  padding: 10px;
+  margin: 0;
+  overflow: auto;
+  color: var(--foreground);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background-color: var(--bg-hover);
+  border-radius: 6px;
+}
+
+.shareLink {
+  display: block;
+  padding: 10px;
+  color: var(--link-blue);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  background-color: var(--bg-hover);
+  border-radius: 6px;
+}
+
 .summaryRow {
   display: flex;
   gap: 12px;
