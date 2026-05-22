@@ -295,8 +295,9 @@ Frontend configuration:
 |---|---:|---|
 | `NEXT_PUBLIC_SMARTOUR_API_BASE_URL` | No | Backend API base URL, default `http://127.0.0.1:8000/api` |
 | `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | No | Browser-safe key for Maps JavaScript rendering |
+| `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID` | No | Browser map ID for Maps JavaScript Advanced Marker rendering; defaults to Google's demo map ID when omitted |
 
-`app/next.config.ts` can read a repository-level `.env` file to populate `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` from either `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` or `GOOGLE_MAPS_API_KEY`. In production, use a separate browser-restricted key instead of reusing a server key.
+`app/next.config.ts` can read a repository-level `.env` file to populate `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` from either `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` or `GOOGLE_MAPS_API_KEY`, and `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID` from either `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID` or `GOOGLE_MAPS_MAP_ID`. In production, use a separate browser-restricted key instead of reusing a server key.
 
 ## 9. Data and State Boundaries
 

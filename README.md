@@ -51,10 +51,12 @@ REQUIREMENT_MODEL_DEVELOPMENT_FALLBACK_ENABLED=true
 # Optional frontend and local development settings
 NEXT_PUBLIC_SMARTOUR_API_BASE_URL=http://127.0.0.1:8000/api
 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your-browser-restricted-google-maps-key
+NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID=your-browser-map-id
 SMARTOUR_CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 ```
 
 Use a separate browser-restricted Google Maps key for `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` in real deployments.
+If `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID` is omitted, the frontend uses Google's demo map ID for Advanced Marker compatibility.
 
 ## Backend Setup
 

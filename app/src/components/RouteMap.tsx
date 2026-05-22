@@ -41,6 +41,7 @@ const DEFAULT_MAP_ZOOM = 12;
 const MAP_BOUNDS_PADDING = 48;
 const ROUTE_STROKE_COLOR = "#0a72ef";
 const ROUTE_MARKER_GLYPH_COLOR = "#ffffff";
+const GOOGLE_MAPS_DEMO_MAP_ID = "DEMO_MAP_ID";
 
 type RouteMapProps = {
   activeDay: ItineraryDay | null;
@@ -63,6 +64,7 @@ type MapStatus = "fallback" | "idle" | "loading" | "local" | "ready";
  */
 export function RouteMap({ activeDay, isPlanning }: RouteMapProps) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
+  const mapId = googleMapsMapId();
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<GoogleMap | null>(null);
   const markerRefs = useRef<GoogleMarker[]>([]);
@@ -153,6 +155,7 @@ export function RouteMap({ activeDay, isPlanning }: RouteMapProps) {
       );
     }
 
+    const canUseAdvancedMarkers = mapSupportsAdvancedMarkers(map);
     for (const [index, item] of (day?.items ?? []).entries()) {
       const coordinate = routeCoordinateFromItem(item);
       if (coordinate === null) {
@@ -160,14 +163,16 @@ export function RouteMap({ activeDay, isPlanning }: RouteMapProps) {
       }
       const position = toGoogleLatLng(coordinate);
       bounds.extend(position);
-      markerRefs.current.push(
-        createAdvancedMarker(googleMaps, {
-          glyphText: `${index + 1}`,
-          map,
-          position,
-          title: item.place.name,
-        }),
-      );
+      if (canUseAdvancedMarkers) {
+        markerRefs.current.push(
+          createAdvancedMarker(googleMaps, {
+            glyphText: `${index + 1}`,
+            map,
+            position,
+            title: item.place.name,
+          }),
+        );
+      }
     }
 
     boundsFitRef.current = () => {
@@ -196,7 +201,7 @@ export function RouteMap({ activeDay, isPlanning }: RouteMapProps) {
           clickableIcons: true,
           disableDefaultUI: true,
           gestureHandling: "cooperative",
-          mapId: googleMaps.Map.DEMO_MAP_ID,
+          mapId,
           zoom: DEFAULT_MAP_ZOOM,
         });
         clearGoogleMapOverlays();
@@ -220,7 +225,7 @@ export function RouteMap({ activeDay, isPlanning }: RouteMapProps) {
     return () => {
       isCancelled = true;
     };
-  }, [activeDay, apiKey, clearGoogleMapOverlays, hasStops]);
+  }, [activeDay, apiKey, clearGoogleMapOverlays, hasStops, mapId]);
 
   return (
     <div className={styles.mapContainer}>
@@ -286,6 +291,7 @@ export function RouteMap({ activeDay, isPlanning }: RouteMapProps) {
  */
 export function RouteLegMap({ destination, leg, origin }: RouteLegMapProps) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
+  const mapId = googleMapsMapId();
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<GoogleMap | null>(null);
   const markerRefs = useRef<GoogleMarker[]>([]);
@@ -342,6 +348,7 @@ export function RouteLegMap({ destination, leg, origin }: RouteLegMapProps) {
           }),
         );
       }
+      const canUseAdvancedMarkers = mapSupportsAdvancedMarkers(map);
       const markerPlaces: Array<{
         label: string;
         place: PlaceRecommendation | null;
@@ -356,14 +363,16 @@ export function RouteLegMap({ destination, leg, origin }: RouteLegMapProps) {
         }
         const position = toGoogleLatLng(coordinate);
         bounds.extend(position);
-        markerRefs.current.push(
-          createAdvancedMarker(googleMaps, {
-            glyphText: markerPlace.label,
-            map,
-            position,
-            title: markerPlace.place?.name,
-          }),
-        );
+        if (canUseAdvancedMarkers) {
+          markerRefs.current.push(
+            createAdvancedMarker(googleMaps, {
+              glyphText: markerPlace.label,
+              map,
+              position,
+              title: markerPlace.place?.name,
+            }),
+          );
+        }
       }
       if (!bounds.isEmpty()) {
         map.fitBounds(bounds, MAP_BOUNDS_PADDING);
@@ -390,7 +399,7 @@ export function RouteLegMap({ destination, leg, origin }: RouteLegMapProps) {
           clickableIcons: true,
           disableDefaultUI: true,
           gestureHandling: "cooperative",
-          mapId: googleMaps.Map.DEMO_MAP_ID,
+          mapId,
           zoom: DEFAULT_MAP_ZOOM,
         });
         clearGoogleMapOverlays();
@@ -415,7 +424,13 @@ export function RouteLegMap({ destination, leg, origin }: RouteLegMapProps) {
       isCancelled = true;
       clearGoogleMapOverlays();
     };
-  }, [apiKey, clearGoogleMapOverlays, hasCoordinates, renderGoogleMapLeg]);
+  }, [
+    apiKey,
+    clearGoogleMapOverlays,
+    hasCoordinates,
+    mapId,
+    renderGoogleMapLeg,
+  ]);
 
   return (
     <div className={`${styles.mapContainer} ${styles.routeLegMap}`}>
@@ -642,6 +657,26 @@ function buildMapStatusLabel(hasApiKey: boolean, status: MapStatus): string {
     return "Local route";
   }
   return "Map idle";
+}
+
+/**
+ * Return the configured Google Maps Map ID.
+ *
+ * @returns The configured Map ID or Google's demo Map ID.
+ */
+function googleMapsMapId(): string {
+  const configuredMapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID?.trim();
+  return configuredMapId || GOOGLE_MAPS_DEMO_MAP_ID;
+}
+
+/**
+ * Return whether a map is configured for advanced markers.
+ *
+ * @param map - The Google map instance.
+ * @returns True when advanced markers are available.
+ */
+function mapSupportsAdvancedMarkers(map: GoogleMap): boolean {
+  return map.getMapCapabilities().isAdvancedMarkersAvailable === true;
 }
 
 /**

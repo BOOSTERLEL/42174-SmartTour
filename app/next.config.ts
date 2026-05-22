@@ -16,6 +16,12 @@ const nextConfig: NextConfig = {
       process.env.GOOGLE_MAPS_API_KEY ??
       readRepositoryEnvValue("GOOGLE_MAPS_API_KEY") ??
       "",
+    NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID:
+      process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID ??
+      readRepositoryEnvValue("NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID") ??
+      process.env.GOOGLE_MAPS_MAP_ID ??
+      readRepositoryEnvValue("GOOGLE_MAPS_MAP_ID") ??
+      "",
   },
 };
 
