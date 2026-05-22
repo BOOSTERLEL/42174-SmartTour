@@ -1,6 +1,8 @@
 """DistilBERT-backed supervised requirement extractor."""
 
 import json
+import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +18,24 @@ from smartour.integrations.requirement_model.normalizer import (
 )
 
 DEFAULT_MAX_LENGTH = 192
+SOURCE_TOKEN_PATTERN = re.compile(
+    r"\d{4}[-/]\d{1,2}[-/]\d{1,2}|"
+    r"\d{1,2}|"
+    r"[A-Za-z]+(?:'[A-Za-z]+)?|"
+    r"[\u4e00-\u9fff]|"
+    r"[^\s]"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class SourceToken:
+    """
+    One model source token with offsets into the original message.
+    """
+
+    text: str
+    start: int
+    end: int
 
 
 class RequirementModelExtractor:
@@ -78,34 +98,43 @@ class RequirementModelExtractor:
         if tokenizer is None or model is None:
             raise RuntimeError("Requirement model failed to load")
         torch = self._torch()
+        source_tokens = tokenize_source_text(message)
+        if not source_tokens:
+            return []
         encoding = tokenizer(
-            message,
+            [token.text for token in source_tokens],
+            is_split_into_words=True,
             truncation=True,
             max_length=self.max_length,
-            return_offsets_mapping=True,
             return_tensors="pt",
         )
-        offset_mapping = encoding.pop("offset_mapping")[0].tolist()
+        word_ids = encoding.word_ids(batch_index=0)
         with torch.no_grad():
             logits = model(**encoding).logits[0]
             probabilities = torch.softmax(logits, dim=-1)
         predictions: list[TokenPrediction] = []
-        for token_index, offsets in enumerate(offset_mapping):
-            start, end = int(offsets[0]), int(offsets[1])
-            if start >= end:
+        seen_word_ids: set[int] = set()
+        for encoded_index, word_id in enumerate(word_ids):
+            if (
+                word_id is None
+                or word_id in seen_word_ids
+                or word_id >= len(source_tokens)
+            ):
                 continue
+            source_token = source_tokens[word_id]
             confidence_tensor, label_tensor = torch.max(
-                probabilities[token_index], dim=-1
+                probabilities[encoded_index], dim=-1
             )
             label_id = int(label_tensor.item())
             predictions.append(
                 TokenPrediction(
                     label=self._label_for_id(label_id),
-                    start=start,
-                    end=end,
+                    start=source_token.start,
+                    end=source_token.end,
                     confidence=float(confidence_tensor.item()),
                 )
             )
+            seen_word_ids.add(word_id)
         return decode_bio_spans(
             message,
             predictions,
@@ -180,3 +209,23 @@ class RequirementModelExtractor:
         import transformers
 
         return transformers
+
+
+def tokenize_source_text(text: str) -> list[SourceToken]:
+    """
+    Tokenize source text with offsets matching the model training labels.
+
+    Args:
+        text: The raw user message.
+
+    Returns:
+        The source tokens and their original character offsets.
+    """
+    return [
+        SourceToken(
+            text=match.group(0),
+            start=match.start(),
+            end=match.end(),
+        )
+        for match in SOURCE_TOKEN_PATTERN.finditer(text)
+    ]

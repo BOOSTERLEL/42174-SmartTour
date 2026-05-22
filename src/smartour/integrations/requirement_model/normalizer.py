@@ -19,6 +19,18 @@ CHINESE_NUMBER_VALUES = {
     "九": 9,
     "十": 10,
 }
+ENGLISH_NUMBER_VALUES = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+}
 INTEREST_CANONICAL_VALUES = {
     "food": "food",
     "restaurant": "food",
@@ -44,6 +56,11 @@ INTEREST_CANONICAL_VALUES = {
     "family": "family",
     "kids": "family",
     "亲子": "family",
+}
+IGNORED_INTEREST_VALUES = {
+    "area",
+    "hotel",
+    "hotels",
 }
 
 
@@ -206,6 +223,11 @@ def normalize_count(value: str, allow_zero: bool) -> int | None:
         number_value = int(digit_match.group(0))
         if number_value > 0 or allow_zero:
             return number_value
+    for text_value, number_value in ENGLISH_NUMBER_VALUES.items():
+        if re.search(rf"\b{text_value}\b", lower_value) and (
+            number_value > 0 or allow_zero
+        ):
+            return number_value
     for text_value, number_value in CHINESE_NUMBER_VALUES.items():
         if text_value in value and (number_value > 0 or allow_zero):
             return number_value
@@ -325,6 +347,8 @@ def normalize_interest(lower_value: str, value: str) -> str | None:
     Returns:
         The canonical interest.
     """
+    if lower_value in IGNORED_INTEREST_VALUES:
+        return None
     if lower_value in INTEREST_CANONICAL_VALUES:
         return INTEREST_CANONICAL_VALUES[lower_value]
     for keyword, interest in INTEREST_CANONICAL_VALUES.items():
