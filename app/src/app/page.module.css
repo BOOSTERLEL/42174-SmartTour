@@ -26,78 +26,10 @@
   letter-spacing: -0.96px;
 }
 
-.navLinks {
-  display: flex;
-  gap: 32px;
-}
-
-.navLink {
-  color: var(--foreground);
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.navLink:hover {
-  opacity: 0.72;
-}
-
 .headerActions {
   display: flex;
   gap: 12px;
   align-items: center;
-}
-
-.subHeader {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  padding: 24px;
-}
-
-.step {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  color: var(--text-secondary);
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.stepNumber {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  font-size: 12px;
-  font-weight: 600;
-  box-shadow: var(--shadow-border);
-}
-
-.stepActive {
-  color: var(--foreground);
-}
-
-.collect .stepNumber {
-  color: var(--accent-develop);
-  box-shadow: 0 0 0 2px var(--accent-develop);
-}
-
-.plan .stepNumber {
-  color: var(--accent-preview);
-  box-shadow: 0 0 0 2px var(--accent-preview);
-}
-
-.review .stepNumber {
-  color: var(--accent-ship);
-  box-shadow: 0 0 0 2px var(--accent-ship);
-}
-
-.stepLine {
-  width: 48px;
-  height: 1px;
-  background-color: var(--border);
 }
 
 .mainContent {
@@ -108,7 +40,7 @@
       320px
     );
   gap: 24px;
-  padding: 0 24px 24px;
+  padding: 24px;
 }
 
 .leftSidebar,
@@ -879,10 +811,6 @@
     height: 440px;
   }
 
-  .navLinks {
-    display: none;
-  }
-
   .titleArea {
     flex-direction: column;
   }
@@ -927,13 +855,8 @@
     gap: 8px;
   }
 
-  .subHeader {
-    padding: 16px;
-    overflow-x: auto;
-  }
-
   .mainContent {
-    padding: 0 16px 16px;
+    padding: 16px;
   }
 
   .mapContainer {

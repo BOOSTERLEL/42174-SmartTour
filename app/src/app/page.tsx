@@ -256,17 +256,6 @@ export default function Home() {
     <div className={styles.container}>
       <header className={styles.header}>
         <div className={styles.logo}>Smartour</div>
-        <nav className={styles.navLinks} aria-label="Primary navigation">
-          <a href="#" className={styles.navLink}>
-            Trips
-          </a>
-          <a href="#" className={styles.navLink}>
-            Explore
-          </a>
-          <a href="#" className={styles.navLink}>
-            API
-          </a>
-        </nav>
         <div className={styles.headerActions}>
           {mounted ? (
             <button
@@ -298,34 +287,6 @@ export default function Home() {
           </button>
         </div>
       </header>
-
-      <div className={styles.subHeader}>
-        <WorkflowStep
-          accentClass={styles.collect}
-          isActive={
-            conversation === null ||
-            conversation.state === "collecting_requirements"
-          }
-          label="Collect"
-          number="1"
-        />
-        <div className={styles.stepLine} />
-        <WorkflowStep
-          accentClass={styles.plan}
-          isActive={isPlanning || conversation?.state === "planning"}
-          label="Plan"
-          number="2"
-        />
-        <div className={styles.stepLine} />
-        <WorkflowStep
-          accentClass={styles.review}
-          isActive={
-            itinerary !== null || conversation?.state === "ready_for_review"
-          }
-          label="Review"
-          number="3"
-        />
-      </div>
 
       <main className={styles.mainContent}>
         <aside className={styles.leftSidebar}>
@@ -548,37 +509,6 @@ export default function Home() {
           </div>
         </aside>
       </main>
-    </div>
-  );
-}
-
-type WorkflowStepProps = {
-  accentClass: string;
-  isActive: boolean;
-  label: string;
-  number: string;
-};
-
-/**
- * Render one workflow step in the app header.
- *
- * @param props - The workflow step props.
- * @returns A workflow step element.
- */
-function WorkflowStep({
-  accentClass,
-  isActive,
-  label,
-  number,
-}: WorkflowStepProps) {
-  return (
-    <div
-      className={`${styles.step} ${accentClass} ${
-        isActive ? styles.stepActive : ""
-      }`}
-    >
-      <div className={styles.stepNumber}>{number}</div>
-      {label}
     </div>
   );
 }
