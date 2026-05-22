@@ -1,6 +1,8 @@
 """FastAPI application entrypoint for the Smartour backend."""
 
+import asyncio
 import os
+import sys
 
 import uvicorn
 from fastapi import FastAPI
@@ -39,7 +41,20 @@ def run() -> None:
     """
     Run the local Smartour API server.
     """
+    _configure_windows_event_loop_policy()
     uvicorn.run("smartour.main:app", host="127.0.0.1", port=8000, reload=False)
+
+
+def _configure_windows_event_loop_policy() -> None:
+    """
+    Use the selector event loop for local Windows API serving.
+    """
+    if sys.platform != "win32":
+        return
+    event_loop_policy_factory = getattr(asyncio, "WindowsSelectorEventLoopPolicy", None)
+    if event_loop_policy_factory is None:
+        return
+    asyncio.set_event_loop_policy(event_loop_policy_factory())
 
 
 def _configure_cors(app: FastAPI) -> None:
