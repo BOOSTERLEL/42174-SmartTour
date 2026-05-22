@@ -3,6 +3,9 @@
 import asyncio
 import os
 import sys
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
+from typing import Any
 
 import uvicorn
 from fastapi import FastAPI
@@ -31,7 +34,7 @@ def create_app() -> FastAPI:
     Returns:
         The configured FastAPI application.
     """
-    app = FastAPI(title="Smartour API", version="0.1.0")
+    app = FastAPI(title="Smartour API", version="0.1.0", lifespan=_lifespan)
     _configure_cors(app)
     app.include_router(health_router, prefix="/api")
     app.include_router(conversations_router, prefix="/api")
@@ -61,6 +64,91 @@ def _configure_windows_event_loop_policy() -> None:
     if event_loop_policy_factory is None:
         return
     asyncio.set_event_loop_policy(event_loop_policy_factory())
+
+
+@asynccontextmanager
+async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
+    """
+    Configure process-local runtime behavior during application startup.
+
+    Args:
+        application: The FastAPI application instance.
+
+    Yields:
+        Control back to FastAPI while the application is running.
+    """
+    _configure_windows_connection_reset_handler()
+    yield
+
+
+def _configure_windows_connection_reset_handler() -> None:
+    """
+    Suppress benign Windows Proactor disconnect callback noise.
+    """
+    if sys.platform != "win32":
+        return
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+    loop.set_exception_handler(
+        _windows_connection_reset_exception_handler(previous_handler)
+    )
+
+
+def _windows_connection_reset_exception_handler(
+    previous_handler: Callable[[asyncio.AbstractEventLoop, dict[str, Any]], object]
+    | None,
+) -> Callable[[asyncio.AbstractEventLoop, dict[str, Any]], None]:
+    """
+    Build an asyncio exception handler for Windows connection resets.
+
+    Args:
+        previous_handler: The previous asyncio exception handler.
+
+    Returns:
+        An asyncio exception handler.
+    """
+
+    def handle_exception(
+        loop: asyncio.AbstractEventLoop, context: dict[str, Any]
+    ) -> None:
+        """
+        Handle asyncio loop exceptions.
+
+        Args:
+            loop: The running asyncio event loop.
+            context: The exception context from asyncio.
+        """
+        if _is_windows_proactor_connection_reset(context):
+            return
+        if previous_handler is not None:
+            previous_handler(loop, context)
+            return
+        loop.default_exception_handler(context)
+
+    return handle_exception
+
+
+def _is_windows_proactor_connection_reset(context: dict[str, Any]) -> bool:
+    """
+    Return whether an asyncio exception is the known Proactor reset callback.
+
+    Args:
+        context: The exception context from asyncio.
+
+    Returns:
+        True when the context matches the benign Windows Proactor reset callback.
+    """
+    exception = context.get("exception")
+    handle = context.get("handle")
+    message = context.get("message")
+    if not isinstance(exception, ConnectionResetError):
+        return False
+    if getattr(exception, "winerror", None) != 10054:
+        return False
+    return (
+        "Exception in callback" in str(message)
+        and "_ProactorBasePipeTransport._call_connection_lost" in str(handle)
+    )
 
 
 def _configure_cors(app: FastAPI) -> None:
@@ -95,4 +183,5 @@ def _cors_allowed_origins() -> list[str]:
     return [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
 
 
+_configure_windows_event_loop_policy()
 app = create_app()
