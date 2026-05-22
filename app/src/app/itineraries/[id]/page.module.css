@@ -1,0 +1,257 @@
+.container {
+  min-height: 100vh;
+  padding: 24px;
+  color: var(--foreground);
+  background-color: var(--background);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1180px;
+  margin: 0 auto 32px;
+}
+
+.logo {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.headerActions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  color: var(--badge-text);
+  font-size: 12px;
+  font-weight: 500;
+  background-color: var(--badge-bg);
+  border-radius: 9999px;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+  gap: 24px;
+  align-items: end;
+  max-width: 1180px;
+  margin: 0 auto 32px;
+  padding-bottom: 24px;
+  box-shadow: 0 1px 0 0 var(--border);
+}
+
+.hero h1 {
+  max-width: 760px;
+  margin: 4px 0 0;
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.kicker {
+  margin: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  background-color: var(--bg-card);
+  border-radius: 8px;
+  box-shadow: var(--shadow-border);
+}
+
+.metric span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.metric strong {
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: 24px;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.daysColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.daySection,
+.reportColumn {
+  background-color: var(--bg-card);
+  border-radius: 8px;
+  box-shadow: var(--shadow-border);
+}
+
+.daySection {
+  padding: 20px;
+}
+
+.dayHeader {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.dayHeader h2,
+.reportColumn h2,
+.emptyState h1 {
+  margin: 4px 0 0;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.dayHeader span {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.summary {
+  margin: 14px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.itemList {
+  display: flex;
+  flex-direction: column;
+  margin-top: 16px;
+}
+
+.itemRow {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  color: var(--foreground);
+  font-size: 14px;
+  box-shadow: 0 1px 0 0 var(--border);
+}
+
+.itemRow:last-child {
+  box-shadow: none;
+}
+
+.itemRow span {
+  color: var(--text-secondary);
+}
+
+.itemRow strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.routeSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.routeSummary span {
+  padding: 4px 8px;
+  color: var(--text-secondary);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+  background-color: var(--bg-hover);
+  border-radius: 6px;
+}
+
+.reportColumn {
+  align-self: start;
+  padding: 20px;
+}
+
+.reportPreview {
+  max-height: 680px;
+  padding: 12px;
+  margin: 16px 0 0;
+  overflow: auto;
+  color: var(--foreground);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background-color: var(--bg-hover);
+  border-radius: 6px;
+}
+
+.emptyReport {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.emptyState {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 64px 0;
+}
+
+@media (max-width: 900px) {
+  .hero,
+  .contentGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero h1 {
+    font-size: 32px;
+  }
+}
+
+@media (max-width: 560px) {
+  .container {
+    padding: 16px;
+  }
+
+  .header,
+  .hero {
+    margin-bottom: 24px;
+  }
+
+  .metaGrid,
+  .itemRow {
+    grid-template-columns: 1fr;
+  }
+
+  .itemRow {
+    gap: 4px;
+  }
+}

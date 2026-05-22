@@ -136,6 +136,7 @@ class Itinerary(BaseModel):
 
     id: str = Field(default_factory=lambda: _new_id("itin"))
     conversation_id: str
+    user_id: str | None = None
     title: str
     destination_name: str
     destination_location: Coordinates | None = None

@@ -32,6 +32,10 @@
   align-items: center;
 }
 
+.headerActions :global(.btn) {
+  gap: 6px;
+}
+
 .mainContent {
   display: grid;
   flex: 1;
@@ -737,30 +741,6 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.costServices {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px;
-  background-color: var(--bg-hover);
-  border-radius: 6px;
-}
-
-.costServiceRow {
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
-  min-width: 0;
-  color: var(--text-secondary);
-  font-family: var(--font-geist-mono), ui-monospace, monospace;
-  font-size: 12px;
-}
-
-.costServiceRow span {
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 
 .actionGrid {

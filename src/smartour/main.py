@@ -11,6 +11,8 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from smartour.api.routes.admin import router as admin_router
+from smartour.api.routes.auth import router as auth_router
 from smartour.api.routes.conversations import router as conversations_router
 from smartour.api.routes.costs import router as costs_router
 from smartour.api.routes.google_maps import router as google_maps_router
@@ -18,6 +20,7 @@ from smartour.api.routes.health import router as health_router
 from smartour.api.routes.itineraries import router as itineraries_router
 from smartour.api.routes.reports import router as reports_router
 from smartour.api.routes.shares import router as shares_router
+from smartour.api.routes.users import router as users_router
 
 DEFAULT_CORS_ALLOWED_ORIGINS = (
     "http://localhost:3000",
@@ -37,10 +40,13 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Smartour API", version="0.1.0", lifespan=_lifespan)
     _configure_cors(app)
     app.include_router(health_router, prefix="/api")
+    app.include_router(auth_router, prefix="/api")
+    app.include_router(admin_router, prefix="/api")
     app.include_router(conversations_router, prefix="/api")
     app.include_router(itineraries_router, prefix="/api")
     app.include_router(reports_router, prefix="/api")
     app.include_router(shares_router, prefix="/api")
+    app.include_router(users_router, prefix="/api")
     app.include_router(costs_router, prefix="/api")
     app.include_router(google_maps_router, prefix="/api")
     return app
@@ -145,10 +151,9 @@ def _is_windows_proactor_connection_reset(context: dict[str, Any]) -> bool:
         return False
     if getattr(exception, "winerror", None) != 10054:
         return False
-    return (
-        "Exception in callback" in str(message)
-        and "_ProactorBasePipeTransport._call_connection_lost" in str(handle)
-    )
+    return "Exception in callback" in str(
+        message
+    ) and "_ProactorBasePipeTransport._call_connection_lost" in str(handle)
 
 
 def _configure_cors(app: FastAPI) -> None:

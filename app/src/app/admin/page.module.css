@@ -1,0 +1,319 @@
+.container {
+  min-height: 100vh;
+  padding: 24px;
+  color: var(--foreground);
+  background-color: var(--background);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1180px;
+  margin: 0 auto 32px;
+}
+
+.logo {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.headerActions,
+.toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.hero {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  justify-content: space-between;
+  max-width: 1180px;
+  margin: 0 auto 24px;
+  padding-bottom: 24px;
+  box-shadow: 0 1px 0 0 var(--border);
+}
+
+.hero h1 {
+  margin: 4px 0 0;
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.kicker {
+  margin: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.toolbar label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.toolbar select {
+  padding: 8px 10px;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 14px;
+  background-color: var(--background);
+  border: none;
+  border-radius: 6px;
+  box-shadow: var(--shadow-border);
+}
+
+.dashboardStack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metricCard,
+.panel,
+.loadingState,
+.accessState,
+.errorText {
+  background-color: var(--bg-card);
+  border-radius: 8px;
+  box-shadow: var(--shadow-border);
+}
+
+.metricCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.metricIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--text-secondary);
+  background-color: var(--bg-hover);
+  border-radius: 6px;
+}
+
+.metricCard span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.metricCard strong {
+  min-width: 0;
+  font-size: 22px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.panel {
+  min-width: 0;
+  padding: 20px;
+}
+
+.panelHeader {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.panelHeader h2 {
+  margin: 4px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.panelHeader > span {
+  color: var(--text-secondary);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.costGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.summaryRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  background-color: var(--bg-hover);
+  border-radius: 6px;
+}
+
+.summaryRow span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.summaryRow strong {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.table {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 6px;
+  box-shadow: var(--shadow-border);
+}
+
+.tableHeader,
+.tableRow {
+  display: grid;
+  grid-template-columns: minmax(100px, 0.8fr) minmax(0, 1.7fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.tableHeader {
+  color: var(--text-secondary);
+  font-weight: 600;
+  background-color: var(--bg-hover);
+}
+
+.tableRow {
+  box-shadow: 0 -1px 0 0 var(--border);
+}
+
+.tableRow span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.statusList {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.emptyText {
+  padding: 14px 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.loadingState,
+.accessState,
+.errorText {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.loadingState,
+.accessState {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 20px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.accessState h2 {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.accessState p {
+  max-width: 420px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.errorText {
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  color: var(--accent-ship);
+  font-size: 13px;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1040px) {
+  .metricGrid,
+  .costGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .container {
+    padding: 16px;
+  }
+
+  .hero,
+  .panelHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .hero h1 {
+    font-size: 32px;
+  }
+
+  .metricGrid,
+  .costGrid,
+  .statusList {
+    grid-template-columns: 1fr;
+  }
+
+  .table {
+    overflow-x: auto;
+  }
+
+  .tableHeader,
+  .tableRow {
+    grid-template-columns: 110px 220px 100px 100px;
+    min-width: 560px;
+  }
+}

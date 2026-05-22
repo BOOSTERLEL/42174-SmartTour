@@ -63,6 +63,12 @@ class Settings(BaseSettings):
     itinerary_job_rate_limit_window_seconds: int = Field(
         default=3600, validation_alias="ITINERARY_JOB_RATE_LIMIT_WINDOW_SECONDS"
     )
+    admin_usernames: str = Field(
+        default="admin", validation_alias="SMARTOUR_ADMIN_USERNAMES"
+    )
+    session_ttl_seconds: int = Field(
+        default=604800, validation_alias="SMARTOUR_SESSION_TTL_SECONDS"
+    )
 
     @model_validator(mode="after")
     def validate_google_maps_api_key(self) -> Self:

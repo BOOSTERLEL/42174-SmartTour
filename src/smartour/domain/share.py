@@ -33,6 +33,7 @@ class ItineraryShareLink(BaseModel):
 
     token: str = Field(default_factory=_new_share_token)
     itinerary_id: str
+    user_id: str | None = None
     created_at: datetime = Field(default_factory=_utc_now)
 
     @property

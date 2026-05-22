@@ -72,6 +72,7 @@ class Conversation(BaseModel):
     """
 
     id: str = Field(default_factory=lambda: _new_id("conv"))
+    user_id: str | None = None
     state: ConversationState = ConversationState.COLLECTING_REQUIREMENTS
     messages: list[ConversationMessage] = Field(default_factory=list)
     requirement: TravelRequirement = Field(default_factory=TravelRequirement)

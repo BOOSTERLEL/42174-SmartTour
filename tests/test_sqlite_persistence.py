@@ -1,5 +1,6 @@
 """Tests for SQLite persistence repositories."""
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import aiosqlite
@@ -9,6 +10,7 @@ from smartour.domain.conversation import Conversation, ConversationState
 from smartour.domain.itinerary import Itinerary
 from smartour.domain.itinerary_job import ItineraryJob, ItineraryJobStatus
 from smartour.domain.share import ItineraryShareLink
+from smartour.domain.user import User, UserSession, normalize_username
 from smartour.infrastructure.database import SQLiteDatabase
 from smartour.infrastructure.repositories.conversations import (
     SQLiteConversationRepository,
@@ -18,6 +20,7 @@ from smartour.infrastructure.repositories.itinerary_jobs import (
     SQLiteItineraryJobRepository,
 )
 from smartour.infrastructure.repositories.shares import SQLiteItineraryShareRepository
+from smartour.infrastructure.repositories.users import SQLiteUserRepository
 
 
 @pytest.mark.asyncio
@@ -30,16 +33,20 @@ async def test_sqlite_repositories_persist_domain_models(tmp_path: Path) -> None
     itinerary_repository = SQLiteItineraryRepository(database)
     job_repository = SQLiteItineraryJobRepository(database)
     share_repository = SQLiteItineraryShareRepository(database)
-    conversation = Conversation(state=ConversationState.CONFIRMING_REQUIREMENTS)
+    conversation = Conversation(
+        state=ConversationState.CONFIRMING_REQUIREMENTS,
+        user_id="usr_1",
+    )
     itinerary = Itinerary(
         conversation_id=conversation.id,
+        user_id="usr_1",
         title="Tokyo Travel Guide",
         destination_name="Tokyo",
         guide_markdown="# Tokyo Travel Guide",
     )
     job = ItineraryJob(conversation_id=conversation.id)
     job.mark_succeeded(itinerary.id)
-    share_link = ItineraryShareLink(itinerary_id=itinerary.id)
+    share_link = ItineraryShareLink(itinerary_id=itinerary.id, user_id="usr_1")
 
     await conversation_repository.save(conversation)
     await itinerary_repository.save(itinerary)
@@ -52,13 +59,64 @@ async def test_sqlite_repositories_persist_domain_models(tmp_path: Path) -> None
     saved_share_link = await share_repository.get_by_token(share_link.token)
     assert saved_conversation is not None
     assert saved_conversation.state == ConversationState.CONFIRMING_REQUIREMENTS
+    assert saved_conversation.user_id == "usr_1"
     assert saved_itinerary is not None
     assert saved_itinerary.title == "Tokyo Travel Guide"
+    assert saved_itinerary.user_id == "usr_1"
     assert saved_job is not None
     assert saved_job.status == ItineraryJobStatus.SUCCEEDED
     assert saved_job.itinerary_id == itinerary.id
     assert saved_share_link is not None
     assert saved_share_link.itinerary_id == itinerary.id
+    assert saved_share_link.user_id == "usr_1"
+    saved_user_itineraries = await itinerary_repository.list_by_user("usr_1")
+    saved_user_share_links = await share_repository.list_by_user("usr_1")
+    assert [saved_itinerary.id for saved_itinerary in saved_user_itineraries] == [
+        itinerary.id
+    ]
+    assert [saved_share_link.token for saved_share_link in saved_user_share_links] == [
+        share_link.token
+    ]
+
+
+@pytest.mark.asyncio
+async def test_sqlite_user_repository_persists_users_and_sessions(
+    tmp_path: Path,
+) -> None:
+    """
+    Verify that SQLite persists user accounts and sessions.
+    """
+    repository = SQLiteUserRepository(
+        SQLiteDatabase(str(tmp_path / "smartour.sqlite3"))
+    )
+    user = User(
+        username="Traveler",
+        normalized_username=normalize_username("Traveler"),
+        password_hash="hash",
+        password_salt="salt",
+        is_admin=True,
+    )
+    session = UserSession(
+        user_id=user.id,
+        expires_at=datetime.now(tz=UTC) + timedelta(days=1),
+    )
+
+    await repository.save_user(user)
+    await repository.save_session(session)
+
+    saved_user = await repository.get_user_by_username("traveler")
+    saved_user_by_id = await repository.get_user_by_id(user.id)
+    saved_session = await repository.get_session(session.token)
+    assert saved_user is not None
+    assert saved_user.id == user.id
+    assert saved_user.is_admin
+    assert saved_user_by_id == saved_user
+    assert saved_session is not None
+    assert saved_session.user_id == user.id
+
+    await repository.delete_session(session.token)
+
+    assert await repository.get_session(session.token) is None
 
 
 @pytest.mark.asyncio

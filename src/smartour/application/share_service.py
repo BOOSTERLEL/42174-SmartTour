@@ -53,12 +53,15 @@ class ShareService:
         self.share_repository = share_repository
         self.report_service = report_service
 
-    async def create_share_link(self, itinerary_id: str) -> ShareLinkResponse | None:
+    async def create_share_link(
+        self, itinerary_id: str, user_id: str | None = None
+    ) -> ShareLinkResponse | None:
         """
         Create a public share link for a persisted itinerary.
 
         Args:
             itinerary_id: The itinerary identifier.
+            user_id: The optional creator user ID.
 
         Returns:
             The created share link response, or None when the itinerary is missing.
@@ -66,7 +69,7 @@ class ShareService:
         itinerary = await self.itinerary_repository.get(itinerary_id)
         if itinerary is None:
             return None
-        share_link = ItineraryShareLink(itinerary_id=itinerary.id)
+        share_link = ItineraryShareLink(itinerary_id=itinerary.id, user_id=user_id)
         await self.share_repository.save(share_link)
         return ShareLinkResponse(
             token=share_link.token,
@@ -75,9 +78,7 @@ class ShareService:
             created_at=share_link.created_at.isoformat(),
         )
 
-    async def get_shared_itinerary(
-        self, token: str
-    ) -> SharedItineraryResponse | None:
+    async def get_shared_itinerary(self, token: str) -> SharedItineraryResponse | None:
         """
         Return the itinerary and report for a public share token.
 

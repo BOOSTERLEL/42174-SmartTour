@@ -1,0 +1,254 @@
+.container {
+  min-height: 100vh;
+  padding: 24px;
+  color: var(--foreground);
+  background-color: var(--background);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1120px;
+  margin: 0 auto 32px;
+}
+
+.logo {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.headerActions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.hero {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  justify-content: space-between;
+  max-width: 1120px;
+  margin: 0 auto 24px;
+  padding-bottom: 24px;
+  box-shadow: 0 1px 0 0 var(--border);
+}
+
+.hero h1 {
+  max-width: 760px;
+  margin: 4px 0 0;
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.kicker {
+  margin: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.authPanel,
+.dashboardSection,
+.loadingState,
+.errorText {
+  max-width: 1120px;
+  margin: 0 auto;
+  background-color: var(--bg-card);
+  border-radius: 8px;
+  box-shadow: var(--shadow-border);
+}
+
+.authPanel {
+  max-width: 520px;
+  padding: 20px;
+}
+
+.modeTabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.modeTabs button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 12px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 6px;
+  box-shadow: var(--shadow-border);
+}
+
+.modeTabs button:hover,
+.activeMode {
+  color: var(--foreground) !important;
+  background-color: var(--bg-hover) !important;
+}
+
+.authForm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.authForm label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.authForm input {
+  width: 100%;
+  padding: 10px 12px;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 14px;
+  background-color: var(--background);
+  border: none;
+  border-radius: 6px;
+  box-shadow: var(--shadow-border);
+}
+
+.authForm input:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.dashboardGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.dashboardSection {
+  min-width: 0;
+  padding: 20px;
+}
+
+.sectionTitle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.sectionTitle h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.itemList {
+  display: flex;
+  flex-direction: column;
+}
+
+.listItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 0;
+  color: var(--foreground);
+  font-size: 14px;
+  box-shadow: 0 1px 0 0 var(--border);
+}
+
+.listItem:last-child {
+  box-shadow: none;
+}
+
+.listItem div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.listItem strong,
+.listItem span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.listItem span {
+  color: var(--text-secondary);
+}
+
+.emptyText {
+  padding: 18px 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.loadingState {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.errorText {
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  color: var(--accent-ship);
+  font-size: 13px;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 760px) {
+  .container {
+    padding: 16px;
+  }
+
+  .hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .hero h1 {
+    font-size: 32px;
+  }
+
+  .dashboardGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .listItem {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .listItem > span {
+    grid-column: 1;
+  }
+}

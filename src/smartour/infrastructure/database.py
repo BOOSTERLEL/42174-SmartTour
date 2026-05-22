@@ -10,6 +10,7 @@ import aiosqlite
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
+    user_id TEXT,
     state TEXT NOT NULL,
     payload TEXT NOT NULL,
     created_at TEXT NOT NULL,
@@ -19,6 +20,7 @@ CREATE TABLE IF NOT EXISTS conversations (
 CREATE TABLE IF NOT EXISTS itineraries (
     id TEXT PRIMARY KEY,
     conversation_id TEXT NOT NULL,
+    user_id TEXT,
     payload TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
@@ -35,8 +37,28 @@ CREATE TABLE IF NOT EXISTS itinerary_jobs (
 CREATE TABLE IF NOT EXISTS itinerary_share_links (
     token TEXT PRIMARY KEY,
     itinerary_id TEXT NOT NULL,
+    user_id TEXT,
     payload TEXT NOT NULL,
     created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    normalized_username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    password_salt TEXT NOT NULL,
+    is_admin INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+    token TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS google_api_cache_entries (
@@ -79,6 +101,12 @@ ON itinerary_share_links(itinerary_id);
 
 CREATE INDEX IF NOT EXISTS idx_google_api_metrics_created_at
 ON google_api_request_metrics(created_at);
+
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id
+ON user_sessions(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_user_sessions_expires_at
+ON user_sessions(expires_at);
 
 CREATE INDEX IF NOT EXISTS idx_rate_limit_events_lookup
 ON rate_limit_events(scope, subject_key, event_name, created_at);
@@ -138,6 +166,35 @@ class SQLiteDatabase:
                     "google_api_request_metrics",
                     "job_id",
                     "TEXT",
+                )
+                await _ensure_column(connection, "conversations", "user_id", "TEXT")
+                await _ensure_column(connection, "itineraries", "user_id", "TEXT")
+                await _ensure_column(
+                    connection,
+                    "itinerary_share_links",
+                    "user_id",
+                    "TEXT",
+                )
+                await connection.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS
+                        idx_conversations_user_id_created_at
+                    ON conversations(user_id, created_at)
+                    """
+                )
+                await connection.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS
+                        idx_itineraries_user_id_created_at
+                    ON itineraries(user_id, created_at)
+                    """
+                )
+                await connection.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS
+                        idx_itinerary_share_links_user_id_created_at
+                    ON itinerary_share_links(user_id, created_at)
+                    """
                 )
                 await connection.execute(
                     """

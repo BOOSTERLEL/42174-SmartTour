@@ -5,10 +5,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from smartour.api.dependencies import get_conversation_service
+from smartour.api.dependencies import get_conversation_service, get_current_user
 from smartour.application.conversation_service import ConversationService
 from smartour.domain.conversation import Conversation, ConversationState
 from smartour.domain.requirement import TravelRequirement
+from smartour.domain.user import User
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -49,6 +50,7 @@ async def create_conversation(
     conversation_service: Annotated[
         ConversationService, Depends(get_conversation_service)
     ],
+    current_user: Annotated[User | None, Depends(get_current_user)],
 ) -> ConversationResponse:
     """
     Create a new travel planning conversation.
@@ -56,12 +58,14 @@ async def create_conversation(
     Args:
         request: The conversation creation request.
         conversation_service: The conversation service.
+        current_user: The authenticated user when present.
 
     Returns:
         The new conversation state.
     """
     conversation = await conversation_service.create_conversation(
-        request.initial_message
+        request.initial_message,
+        user_id=current_user.id if current_user else None,
     )
     return _conversation_response(conversation)
 

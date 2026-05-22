@@ -3,6 +3,7 @@
  */
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000/api";
+const DEFAULT_BACKEND_PORT = "8000";
 
 /**
  * Supported conversation states returned by the backend.
@@ -143,6 +144,7 @@ export type ItineraryDay = {
 export type Itinerary = {
   id: string;
   conversation_id: string;
+  user_id: string | null;
   title: string;
   destination_name: string;
   destination_location: Coordinates | null;
@@ -229,14 +231,175 @@ export type SharedItineraryResponse = {
 };
 
 /**
+ * Public user fields returned by auth endpoints.
+ */
+export type AuthUser = {
+  user_id: string;
+  username: string;
+  is_admin: boolean;
+};
+
+/**
+ * Browser authentication state returned by the backend.
+ */
+export type AuthStateResponse = {
+  authenticated: boolean;
+  user: AuthUser | null;
+};
+
+/**
+ * Itinerary summary shown in the user dashboard.
+ */
+export type UserItinerarySummary = {
+  itinerary_id: string;
+  title: string;
+  destination_name: string;
+  created_at: string;
+  open_path: string;
+};
+
+/**
+ * Share-link summary shown in the user dashboard.
+ */
+export type UserShareLinkSummary = {
+  token: string;
+  itinerary_id: string;
+  itinerary_title: string;
+  share_path: string;
+  created_at: string;
+};
+
+/**
+ * Current user's dashboard response.
+ */
+export type UserDashboardResponse = {
+  created_itineraries: UserItinerarySummary[];
+  share_links: UserShareLinkSummary[];
+};
+
+/**
+ * Aggregate backend record counts returned for admins.
+ */
+export type AdminRecordCounts = {
+  users: number;
+  conversations: number;
+  itineraries: number;
+  itinerary_jobs: number;
+  share_links: number;
+};
+
+/**
+ * Itinerary job status count returned for admins.
+ */
+export type AdminJobStatusCount = {
+  status: string;
+  count: number;
+};
+
+/**
+ * Backend admin dashboard statistics.
+ */
+export type AdminStatsResponse = {
+  generated_at: string;
+  record_counts: AdminRecordCounts;
+  job_status_counts: AdminJobStatusCount[];
+  google_maps_cost_summary: GoogleMapsCostSummary;
+};
+
+/**
+ * Error raised when the backend returns a non-2xx response.
+ */
+export class ApiRequestError extends Error {
+  status: number;
+
+  /**
+   * Initialize an API request error.
+   *
+   * @param message - The readable error message.
+   * @param status - The HTTP response status.
+   */
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
+}
+
+/**
  * Return the configured backend API base URL.
  *
  * @returns The normalized API base URL without a trailing slash.
  */
 export function getApiBaseUrl(): string {
   return (
-    process.env.NEXT_PUBLIC_SMARTOUR_API_BASE_URL ?? DEFAULT_API_BASE_URL
+    process.env.NEXT_PUBLIC_SMARTOUR_API_BASE_URL ?? getDefaultApiBaseUrl()
   ).replace(/\/$/, "");
+}
+
+/**
+ * Build the default API base URL for the current browser host.
+ *
+ * @returns The default API base URL.
+ */
+function getDefaultApiBaseUrl(): string {
+  if (typeof window === "undefined") {
+    return DEFAULT_API_BASE_URL;
+  }
+  return `${window.location.protocol}//${window.location.hostname}:${DEFAULT_BACKEND_PORT}/api`;
+}
+
+/**
+ * Register a local user and start a browser session.
+ *
+ * @param username - The username.
+ * @param password - The password.
+ * @returns The authenticated browser state.
+ */
+export async function registerAuthUser(
+  username: string,
+  password: string,
+): Promise<AuthStateResponse> {
+  return requestJson<AuthStateResponse>("/auth/register", {
+    body: { password, username },
+    method: "POST",
+  });
+}
+
+/**
+ * Login a local user and start a browser session.
+ *
+ * @param username - The username.
+ * @param password - The password.
+ * @returns The authenticated browser state.
+ */
+export async function loginAuthUser(
+  username: string,
+  password: string,
+): Promise<AuthStateResponse> {
+  return requestJson<AuthStateResponse>("/auth/login", {
+    body: { password, username },
+    method: "POST",
+  });
+}
+
+/**
+ * Logout the current browser session.
+ *
+ * @returns The unauthenticated browser state.
+ */
+export async function logoutAuthUser(): Promise<AuthStateResponse> {
+  return requestJson<AuthStateResponse>("/auth/logout", {
+    method: "POST",
+  });
+}
+
+/**
+ * Fetch the current browser authentication state.
+ *
+ * @returns The current authentication state.
+ */
+export async function getAuthState(): Promise<AuthStateResponse> {
+  return requestJson<AuthStateResponse>("/auth/me");
 }
 
 /**
@@ -398,6 +561,31 @@ export async function getSharedItinerary(
   );
 }
 
+/**
+ * Fetch the current user's dashboard data.
+ *
+ * @returns The current user's dashboard data.
+ */
+export async function getUserDashboard(): Promise<UserDashboardResponse> {
+  return requestJson<UserDashboardResponse>("/users/me/dashboard");
+}
+
+/**
+ * Fetch admin dashboard statistics.
+ *
+ * @param windowHours - Google Maps cost-summary lookback window.
+ * @returns The admin statistics response.
+ */
+export async function getAdminStats(
+  windowHours = 24,
+): Promise<AdminStatsResponse> {
+  const searchParams = new URLSearchParams();
+  searchParams.set("window_hours", String(windowHours));
+  return requestJson<AdminStatsResponse>(
+    `/admin/stats?${searchParams.toString()}`,
+  );
+}
+
 type RequestOptions = {
   body?: unknown;
   method?: "GET" | "POST";
@@ -420,11 +608,15 @@ async function requestJson<ResponseBody>(
     headers: {
       "Content-Type": "application/json",
     },
+    credentials: "include",
     method: options.method ?? "GET",
   });
   const payload = await parseJson(response);
   if (!response.ok) {
-    throw new Error(readErrorMessage(payload, response.statusText));
+    throw new ApiRequestError(
+      readErrorMessage(payload, response.statusText),
+      response.status,
+    );
   }
   return payload as ResponseBody;
 }

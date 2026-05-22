@@ -233,7 +233,7 @@ async def test_planning_service_generates_structured_itinerary() -> None:
     """
     conversation_repository = InMemoryConversationRepository()
     itinerary_repository = InMemoryItineraryRepository()
-    conversation = Conversation(requirement=_complete_requirement())
+    conversation = Conversation(requirement=_complete_requirement(), user_id="usr_1")
     await conversation_repository.save(conversation)
     places_client = FakePlacesClient()
     routes_client = FakeRoutesClient()
@@ -250,6 +250,7 @@ async def test_planning_service_generates_structured_itinerary() -> None:
     )
 
     assert itinerary is not None
+    assert itinerary.user_id == "usr_1"
     assert itinerary.title == "1-Day Tokyo Travel Guide"
     assert itinerary.destination_location is not None
     assert itinerary.hotels[0].name == "Central Hotel"

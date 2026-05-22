@@ -30,9 +30,12 @@ async def test_share_service_creates_opaque_share_link() -> None:
         report_service=report_service,
     )
 
-    share_link = await share_service.create_share_link(itinerary.id)
+    share_link = await share_service.create_share_link(itinerary.id, user_id="usr_1")
     assert share_link is not None
     assert share_link.itinerary_id == itinerary.id
+    saved_share_link = await share_repository.get_by_token(share_link.token)
+    assert saved_share_link is not None
+    assert saved_share_link.user_id == "usr_1"
     assert share_link.token not in itinerary.id
     assert itinerary.id not in share_link.token
     assert share_link.share_path == f"/share/{share_link.token}"
@@ -53,7 +56,7 @@ async def test_share_route_returns_not_found_for_missing_itinerary() -> None:
     share_service = _share_service()
 
     with pytest.raises(HTTPException) as error_info:
-        await create_itinerary_share_link("missing", share_service)
+        await create_itinerary_share_link("missing", share_service, None)
 
     assert error_info.value.status_code == status.HTTP_404_NOT_FOUND
     assert error_info.value.detail == "Itinerary not found"

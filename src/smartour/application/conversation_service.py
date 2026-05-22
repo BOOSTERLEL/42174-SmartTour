@@ -103,18 +103,19 @@ class ConversationService:
         self.requirement_extractor = requirement_extractor
 
     async def create_conversation(
-        self, initial_message: str | None = None
+        self, initial_message: str | None = None, user_id: str | None = None
     ) -> Conversation:
         """
         Create a conversation and optionally process the first user message.
 
         Args:
             initial_message: An optional first user message.
+            user_id: The optional owner user ID.
 
         Returns:
             The created conversation.
         """
-        conversation = Conversation()
+        conversation = Conversation(user_id=user_id)
         await self.conversation_repository.save(conversation)
         if initial_message:
             updated_conversation = await self.handle_user_message(

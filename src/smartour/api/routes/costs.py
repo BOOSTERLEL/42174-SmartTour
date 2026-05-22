@@ -4,11 +4,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from smartour.api.dependencies import get_cost_monitoring_service
+from smartour.api.dependencies import get_cost_monitoring_service, require_admin_user
 from smartour.application.cost_monitoring_service import (
     CostMonitoringService,
     GoogleMapsCostSummary,
 )
+from smartour.domain.user import User
 
 router = APIRouter(prefix="/costs", tags=["costs"])
 
@@ -18,6 +19,7 @@ async def get_google_maps_cost_summary(
     cost_monitoring_service: Annotated[
         CostMonitoringService, Depends(get_cost_monitoring_service)
     ],
+    current_user: Annotated[User, Depends(require_admin_user)],
     job_id: Annotated[str | None, Query()] = None,
     window_hours: Annotated[int, Query(ge=1, le=720)] = 24,
 ) -> GoogleMapsCostSummary:
@@ -26,6 +28,7 @@ async def get_google_maps_cost_summary(
 
     Args:
         cost_monitoring_service: The cost monitoring service.
+        current_user: The authenticated admin user.
         job_id: Optional itinerary job filter.
         window_hours: Lookback window in hours.
 

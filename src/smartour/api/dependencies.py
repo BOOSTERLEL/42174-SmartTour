@@ -2,9 +2,13 @@
 
 from collections.abc import AsyncIterator
 from functools import lru_cache
+from typing import Annotated
 
 import httpx
+from fastapi import Depends, HTTPException, Request, status
 
+from smartour.application.admin_service import AdminService
+from smartour.application.auth_service import SESSION_COOKIE_NAME, AuthService
 from smartour.application.conversation_service import ConversationService
 from smartour.application.cost_monitoring_service import CostMonitoringService
 from smartour.application.itinerary_job_service import ItineraryJobService
@@ -15,7 +19,9 @@ from smartour.application.requirement_extractor import (
     RuleBasedRequirementExtractor,
 )
 from smartour.application.share_service import ShareService
+from smartour.application.user_dashboard_service import UserDashboardService
 from smartour.core.config import Settings
+from smartour.domain.user import User
 from smartour.infrastructure.database import SQLiteDatabase
 from smartour.infrastructure.google_api_store import SQLiteGoogleApiStore
 from smartour.infrastructure.rate_limit import SimpleRateLimiter, SQLiteRateLimitStore
@@ -27,6 +33,7 @@ from smartour.infrastructure.repositories.itinerary_jobs import (
     SQLiteItineraryJobRepository,
 )
 from smartour.infrastructure.repositories.shares import SQLiteItineraryShareRepository
+from smartour.infrastructure.repositories.users import SQLiteUserRepository
 from smartour.integrations.google_maps.client import (
     GoogleMapsClient,
     create_google_maps_client,
@@ -101,6 +108,38 @@ def get_itinerary_share_repository() -> SQLiteItineraryShareRepository:
 
 
 @lru_cache
+def get_user_repository() -> SQLiteUserRepository:
+    """
+    Create the process-local user repository.
+
+    Returns:
+        The SQLite user repository.
+    """
+    return SQLiteUserRepository(get_database())
+
+
+@lru_cache
+def get_auth_service() -> AuthService:
+    """
+    Create the local authentication service.
+
+    Returns:
+        The authentication service.
+    """
+    settings = get_settings()
+    admin_usernames = [
+        username.strip()
+        for username in settings.admin_usernames.split(",")
+        if username.strip()
+    ]
+    return AuthService(
+        user_repository=get_user_repository(),
+        admin_usernames=admin_usernames,
+        session_ttl_seconds=settings.session_ttl_seconds,
+    )
+
+
+@lru_cache
 def get_google_api_store() -> SQLiteGoogleApiStore:
     """
     Create the Google API cache and metrics store.
@@ -128,6 +167,20 @@ def get_cost_monitoring_service() -> CostMonitoringService:
             "geocoding": settings.google_maps_geocoding_unit_cost_usd,
             "timezone": settings.google_maps_timezone_unit_cost_usd,
         },
+    )
+
+
+@lru_cache
+def get_admin_service() -> AdminService:
+    """
+    Create the admin dashboard service.
+
+    Returns:
+        The admin dashboard service.
+    """
+    return AdminService(
+        database=get_database(),
+        cost_monitoring_service=get_cost_monitoring_service(),
     )
 
 
@@ -240,6 +293,20 @@ def get_share_service() -> ShareService:
 
 
 @lru_cache
+def get_user_dashboard_service() -> UserDashboardService:
+    """
+    Create the current-user dashboard service.
+
+    Returns:
+        The user dashboard service.
+    """
+    return UserDashboardService(
+        itinerary_repository=get_itinerary_repository(),
+        share_repository=get_itinerary_share_repository(),
+    )
+
+
+@lru_cache
 def get_itinerary_job_service() -> ItineraryJobService:
     """
     Create the itinerary job service.
@@ -254,6 +321,71 @@ def get_itinerary_job_service() -> ItineraryJobService:
         conversation_rate_limiter=get_conversation_rate_limiter(),
         ip_rate_limiter=get_ip_rate_limiter(),
     )
+
+
+async def get_current_user(
+    request: Request,
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> User | None:
+    """
+    Return the current user when a valid session cookie is present.
+
+    Args:
+        request: The inbound HTTP request.
+        auth_service: The authentication service.
+
+    Returns:
+        The authenticated user when present.
+    """
+    return await auth_service.get_user_for_session(
+        request.cookies.get(SESSION_COOKIE_NAME)
+    )
+
+
+async def require_current_user(
+    current_user: Annotated[User | None, Depends(get_current_user)],
+) -> User:
+    """
+    Require an authenticated user.
+
+    Args:
+        current_user: The optional current user.
+
+    Returns:
+        The authenticated user.
+
+    Raises:
+        HTTPException: Raised when the request is unauthenticated.
+    """
+    if current_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+    return current_user
+
+
+async def require_admin_user(
+    current_user: Annotated[User, Depends(require_current_user)],
+) -> User:
+    """
+    Require an authenticated admin user.
+
+    Args:
+        current_user: The authenticated user.
+
+    Returns:
+        The authenticated admin user.
+
+    Raises:
+        HTTPException: Raised when the request is not an admin.
+    """
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user
 
 
 async def get_google_maps_client() -> AsyncIterator[GoogleMapsClient]:

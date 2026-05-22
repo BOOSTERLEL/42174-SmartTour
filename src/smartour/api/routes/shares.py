@@ -4,12 +4,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from smartour.api.dependencies import get_share_service
+from smartour.api.dependencies import get_current_user, get_share_service
 from smartour.application.share_service import (
     SharedItineraryResponse,
     ShareLinkResponse,
     ShareService,
 )
+from smartour.domain.user import User
 
 router = APIRouter(tags=["shares"])
 
@@ -22,6 +23,7 @@ router = APIRouter(tags=["shares"])
 async def create_itinerary_share_link(
     itinerary_id: str,
     share_service: Annotated[ShareService, Depends(get_share_service)],
+    current_user: Annotated[User | None, Depends(get_current_user)],
 ) -> ShareLinkResponse:
     """
     Create a public read-only share link for an itinerary.
@@ -29,11 +31,15 @@ async def create_itinerary_share_link(
     Args:
         itinerary_id: The itinerary identifier.
         share_service: The share service.
+        current_user: The authenticated user when present.
 
     Returns:
         The created share-link response.
     """
-    share_link = await share_service.create_share_link(itinerary_id)
+    share_link = await share_service.create_share_link(
+        itinerary_id,
+        user_id=current_user.id if current_user else None,
+    )
     if share_link is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Itinerary not found"

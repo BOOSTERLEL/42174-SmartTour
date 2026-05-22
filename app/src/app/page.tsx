@@ -2,7 +2,7 @@
 
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { useTheme } from "next-themes";
+import Link from "next/link";
 import {
   BarChart2,
   Bus,
@@ -21,7 +21,6 @@ import {
   Moon,
   MoreHorizontal,
   Navigation,
-  RefreshCw,
   Send,
   Ship,
   Sparkles,
@@ -34,13 +33,14 @@ import {
   createConversation,
   createItineraryShareLink,
   createItineraryJob,
-  getGoogleMapsCostSummary,
   getApiBaseUrl,
+  getAuthState,
   getItinerary,
   getItineraryJob,
   getItineraryReport,
+  logoutAuthUser,
+  type AuthStateResponse,
   type ConversationResponse,
-  type GoogleMapsCostSummary,
   type Itinerary,
   type ItineraryDay,
   type ItineraryItem,
@@ -53,6 +53,7 @@ import {
 } from "@/lib/smartourApi";
 import { DailyPhotoGallery } from "@/components/DailyPhotoGallery";
 import { RouteLegMap } from "@/components/RouteMap";
+import { useTheme } from "@/components/ThemeProvider";
 import styles from "./page.module.css";
 
 const DEFAULT_PROMPT =
@@ -98,9 +99,8 @@ export default function Home() {
   );
   const [job, setJob] = useState<ItineraryJob | null>(null);
   const [itinerary, setItinerary] = useState<Itinerary | null>(null);
-  const [costSummary, setCostSummary] = useState<GoogleMapsCostSummary | null>(
-    null,
-  );
+  const [authState, setAuthState] = useState<AuthStateResponse | null>(null);
+  const [apiBaseUrl, setApiBaseUrl] = useState("-");
   const [report, setReport] = useState<ItineraryReport | null>(null);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [activeDayIndex, setActiveDayIndex] = useState(0);
@@ -109,7 +109,6 @@ export default function Home() {
   );
   const [isSending, setIsSending] = useState(false);
   const [isPlanning, setIsPlanning] = useState(false);
-  const [isRefreshingCosts, setIsRefreshingCosts] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [isCreatingShare, setIsCreatingShare] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -118,7 +117,15 @@ export default function Home() {
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
       setMounted(true);
+      setApiBaseUrl(getApiBaseUrl());
     });
+    void getAuthState()
+      .then((nextAuthState) => {
+        setAuthState(nextAuthState);
+      })
+      .catch(() => {
+        setAuthState({ authenticated: false, user: null });
+      });
     return () => {
       window.cancelAnimationFrame(frameId);
     };
@@ -194,7 +201,6 @@ export default function Home() {
         confirmedConversation.conversation_id,
       );
       setJob(queuedJob);
-      await refreshCostSummary(queuedJob.id);
       appendMessage(
         "assistant",
         "Planning job queued. I am checking progress.",
@@ -221,7 +227,6 @@ export default function Home() {
     for (let pollIndex = 0; pollIndex < JOB_MAX_POLLS; pollIndex += 1) {
       const latestJob = await getItineraryJob(jobId);
       setJob(latestJob);
-      await refreshCostSummary(latestJob.id);
       if (latestJob.status === "succeeded" && latestJob.itinerary_id !== null) {
         return getItinerary(latestJob.itinerary_id);
       }
@@ -233,23 +238,6 @@ export default function Home() {
       await sleep(JOB_POLL_INTERVAL_MS);
     }
     throw new Error("Itinerary generation timed out");
-  }
-
-  /**
-   * Refresh backend Google Maps cost monitoring data.
-   *
-   * @param jobId - Optional itinerary job identifier.
-   */
-  async function refreshCostSummary(jobId: string | null = job?.id ?? null) {
-    setIsRefreshingCosts(true);
-    try {
-      const nextCostSummary = await getGoogleMapsCostSummary(jobId);
-      setCostSummary(nextCostSummary);
-    } catch (error) {
-      handleRequestError(error);
-    } finally {
-      setIsRefreshingCosts(false);
-    }
   }
 
   /**
@@ -340,6 +328,17 @@ export default function Home() {
   }
 
   /**
+   * Logout the current user and refresh header state.
+   */
+  async function handleLogout() {
+    try {
+      setAuthState(await logoutAuthUser());
+    } catch (error) {
+      handleRequestError(error);
+    }
+  }
+
+  /**
    * Append a local chat message.
    *
    * @param role - The message role.
@@ -395,9 +394,34 @@ export default function Home() {
               {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
             </button>
           ) : null}
-          <button className="btn btn-secondary" type="button">
-            Sign in
-          </button>
+          {authState?.authenticated ? (
+            <>
+              <Link className="btn btn-secondary" href="/account">
+                <User size={16} />
+                {authState.user?.username ?? "Account"}
+              </Link>
+              {authState.user?.is_admin ? (
+                <Link className="btn btn-secondary" href="/admin">
+                  <BarChart2 size={16} />
+                  Admin
+                </Link>
+              ) : null}
+              <button
+                className="btn btn-ghost"
+                onClick={() => {
+                  void handleLogout();
+                }}
+                type="button"
+              >
+                Sign out
+              </button>
+            </>
+          ) : (
+            <Link className="btn btn-secondary" href="/account">
+              <User size={16} />
+              Sign in
+            </Link>
+          )}
           <button
             className="btn btn-primary"
             onClick={() => {
@@ -405,7 +429,6 @@ export default function Home() {
               setConversation(null);
               setJob(null);
               setItinerary(null);
-              setCostSummary(null);
               setReport(null);
               setShareUrl(null);
               setExpandedRouteIndex(null);
@@ -623,69 +646,13 @@ export default function Home() {
 
             <SummaryBlock icon={<BarChart2 size={16} />} title="Backend">
               <div className={styles.summaryStack}>
-                <SummaryRow label="API base" value={getApiBaseUrl()} />
+                <SummaryRow label="API base" value={apiBaseUrl} />
                 <SummaryRow
                   label="Conversation"
                   value={conversation?.conversation_id ?? "-"}
                 />
                 <SummaryRow label="Job status" value={job?.status ?? "-"} />
               </div>
-            </SummaryBlock>
-
-            <SummaryBlock icon={<BarChart2 size={16} />} title="Cost monitor">
-              <div className={styles.summaryStack}>
-                <SummaryRow
-                  label="Requests"
-                  value={formatNumber(costSummary?.total_requests)}
-                />
-                <SummaryRow
-                  label="Billable est."
-                  value={formatNumber(costSummary?.estimated_billable_requests)}
-                />
-                <SummaryRow
-                  label="Cache hits"
-                  value={formatNumber(costSummary?.cache_hits)}
-                />
-                <SummaryRow
-                  label="Errors"
-                  value={formatNumber(costSummary?.error_requests)}
-                />
-                <SummaryRow
-                  label="Est. cost"
-                  value={formatCost(costSummary?.estimated_cost_usd)}
-                />
-              </div>
-              {costSummary !== null && costSummary.services.length > 0 ? (
-                <div className={styles.costServices}>
-                  {costSummary.services.slice(0, 4).map((service) => (
-                    <div
-                      className={styles.costServiceRow}
-                      key={`${service.service}-${service.endpoint}`}
-                    >
-                      <span>{formatServiceName(service.service)}</span>
-                      <span>
-                        {service.estimated_billable_requests}/
-                        {service.total_requests}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              <button
-                className={`btn btn-secondary ${styles.summaryAction}`}
-                disabled={isRefreshingCosts}
-                onClick={() => {
-                  void refreshCostSummary();
-                }}
-                type="button"
-              >
-                {isRefreshingCosts ? (
-                  <LoaderCircle className={styles.spin} size={16} />
-                ) : (
-                  <RefreshCw size={16} />
-                )}
-                Refresh
-              </button>
             </SummaryBlock>
 
             <SummaryBlock icon={<FileText size={16} />} title="Outputs">
@@ -1210,42 +1177,6 @@ function buildStatusLabel(
     return conversation.state.replaceAll("_", " ");
   }
   return "Backend idle";
-}
-
-/**
- * Format an optional count for summary display.
- *
- * @param value - Optional numeric value.
- * @returns A readable count.
- */
-function formatNumber(value: number | null | undefined): string {
-  if (value === null || value === undefined) {
-    return "-";
-  }
-  return value.toLocaleString();
-}
-
-/**
- * Format an optional estimated cost value.
- *
- * @param value - Optional estimated USD cost.
- * @returns A readable estimated cost.
- */
-function formatCost(value: number | null | undefined): string {
-  if (value === null || value === undefined) {
-    return "-";
-  }
-  return `$${value.toFixed(6)}`;
-}
-
-/**
- * Format a backend service key for display.
- *
- * @param service - The backend service key.
- * @returns A readable service name.
- */
-function formatServiceName(service: string): string {
-  return service.replaceAll("_", " ");
 }
 
 /**

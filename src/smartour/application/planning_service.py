@@ -509,6 +509,7 @@ class PlanningService:
         )
         itinerary = Itinerary(
             conversation_id=conversation_id,
+            user_id=conversation.user_id,
             title=self._build_title(requirement),
             destination_name=requirement.destination or "Destination",
             destination_location=destination_location,
