@@ -271,29 +271,35 @@ def normalize_span(slot_name: str, value: str) -> str | int | None:
     """
     normalized_value = value.strip()
     if slot_name == "TRIP_LENGTH_DAYS":
-        return normalize_number(normalized_value)
-    if slot_name in {"ADULTS", "CHILDREN"}:
+        return normalize_number(normalized_value, allow_zero=False)
+    if slot_name == "ADULTS":
+        return normalize_number(normalized_value, allow_zero=False)
+    if slot_name == "CHILDREN":
         if "no" in normalized_value.lower() or "不带" in normalized_value:
             return 0
-        return normalize_number(normalized_value)
+        return normalize_number(normalized_value, allow_zero=True)
     return normalize_runtime_span(slot_name, normalized_value)
 
 
-def normalize_number(value: str) -> int | None:
+def normalize_number(value: str, allow_zero: bool) -> int | None:
     """
     Normalize Arabic or common Chinese numbers.
 
     Args:
         value: The raw number phrase.
+        allow_zero: Whether zero is a valid decoded value.
 
     Returns:
         The integer value when detected.
     """
     digit_match = re.search(r"\d{1,2}", value)
     if digit_match:
-        return int(digit_match.group(0))
+        number_value = int(digit_match.group(0))
+        if number_value > 0 or allow_zero:
+            return number_value
+        return None
     for text_value, number_value in CHINESE_NUMBER_VALUES.items():
-        if text_value in value:
+        if text_value in value and (number_value > 0 or allow_zero):
             return number_value
     return None
 
@@ -823,9 +829,7 @@ def build_metric_table_rows(
     return [keys, *[[row[key] for key in keys] for row in rows]]
 
 
-def build_failure_table_rows(
-    rows: list[Mapping[str, str]]
-) -> list[list[str]]:
+def build_failure_table_rows(rows: list[Mapping[str, str]]) -> list[list[str]]:
     """
     Build ClearML table rows for failed examples.
 

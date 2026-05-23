@@ -55,6 +55,19 @@ def test_decode_slots_uses_runtime_canonicalization() -> None:
     assert slots.interests == ["nature", "food", "family", "history"]
 
 
+def test_decode_slots_rejects_zero_adults_but_allows_zero_children() -> None:
+    """
+    Verify invalid adult predictions do not crash weak-model evaluation.
+    """
+    slots = decode_slots(
+        ["no", "adults", "and", "0", "children"],
+        ["B-ADULTS", "I-ADULTS", "O", "B-CHILDREN", "I-CHILDREN"],
+    )
+
+    assert slots.adults is None
+    assert slots.children == 0
+
+
 def test_compute_metrics_normalizes_list_field_order() -> None:
     """
     Verify list slot order does not reduce field or exact-match accuracy.
