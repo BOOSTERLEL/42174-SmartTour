@@ -8,6 +8,14 @@ import pytest
 import smartour.main as main
 
 
+class WindowsConnectionResetError(ConnectionResetError):
+    """
+    Test double for Windows connection reset errors that expose winerror.
+    """
+
+    winerror: int
+
+
 def test_configure_windows_event_loop_policy_uses_selector(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -59,7 +67,7 @@ def test_windows_proactor_connection_reset_context_is_detected() -> None:
     """
     Verify the known Windows Proactor reset callback is recognized.
     """
-    exception = ConnectionResetError(10054, "reset")
+    exception = WindowsConnectionResetError(10054, "reset")
     exception.winerror = 10054
     context = {
         "exception": exception,
@@ -89,7 +97,7 @@ def test_windows_connection_reset_handler_delegates_other_errors() -> None:
         delegated_contexts.append(context)
 
     handler = main._windows_connection_reset_exception_handler(previous_handler)
-    reset_exception = ConnectionResetError(10054, "reset")
+    reset_exception = WindowsConnectionResetError(10054, "reset")
     reset_exception.winerror = 10054
     reset_context = {
         "exception": reset_exception,
