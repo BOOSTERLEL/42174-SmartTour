@@ -77,6 +77,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-dir", type=Path, default=DEFAULT_MODEL_DIR)
     parser.add_argument("--split", default="test")
     parser.add_argument("--max-length", type=int, default=192)
+    parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="cpu")
     parser.add_argument("--clearml", action="store_true")
     parser.add_argument("--clearml-project", default=DEFAULT_CLEARML_PROJECT)
     parser.add_argument(
@@ -92,6 +93,7 @@ def predict_labels(
     tokenizer: Any,
     model: Any,
     max_length: int,
+    device: torch.device | None = None,
 ) -> list[str]:
     """
     Predict one BIO label per source token.
@@ -101,6 +103,7 @@ def predict_labels(
         tokenizer: The Hugging Face tokenizer.
         model: The token-classification model.
         max_length: The maximum encoded sequence length.
+        device: Optional device where model inputs should be moved.
 
     Returns:
         The predicted BIO labels aligned to the source tokens.
@@ -113,8 +116,9 @@ def predict_labels(
         return_tensors="pt",
     )
     word_ids = encoding.word_ids(batch_index=0)
+    model_inputs = move_encoding_to_device(encoding, device)
     with torch.no_grad():
-        logits = model(**encoding).logits[0]
+        logits = model(**model_inputs).logits[0]
     labels = ["O"] * len(tokens)
     seen_word_ids: set[int] = set()
     for encoded_index, word_id in enumerate(word_ids):
@@ -124,6 +128,27 @@ def predict_labels(
         labels[word_id] = ID_TO_LABEL[predicted_id]
         seen_word_ids.add(word_id)
     return labels
+
+
+def move_encoding_to_device(
+    encoding: Mapping[str, Any], device: torch.device | None
+) -> dict[str, Any]:
+    """
+    Move tokenizer encoding tensors to an optional device.
+
+    Args:
+        encoding: The tokenizer output mapping.
+        device: The target device, or None to keep tensors unchanged.
+
+    Returns:
+        Model input values on the requested device.
+    """
+    if device is None:
+        return dict(encoding)
+    return {
+        name: value.to(device) if hasattr(value, "to") else value
+        for name, value in encoding.items()
+    }
 
 
 def decode_slots(tokens: list[str], labels: list[str]) -> RequirementSlots:
@@ -639,14 +664,68 @@ def evaluate_with_diagnostics(
     """
     records = load_jsonl(args.data_dir / f"{args.split}.jsonl")
     tokenizer = AutoTokenizer.from_pretrained(args.model_dir, use_fast=True)
-    model = AutoModelForTokenClassification.from_pretrained(args.model_dir)
+    device = resolve_evaluation_device(args.device)
+    model = AutoModelForTokenClassification.from_pretrained(args.model_dir).to(device)
+    return evaluate_records(
+        records=records,
+        tokenizer=tokenizer,
+        model=model,
+        max_length=args.max_length,
+        device=device,
+    )
+
+
+def resolve_evaluation_device(device_name: str) -> torch.device:
+    """
+    Resolve the requested evaluation device.
+
+    Args:
+        device_name: The requested device name.
+
+    Returns:
+        The PyTorch device to use.
+
+    Raises:
+        RuntimeError: Raised when CUDA is requested but unavailable.
+    """
+    if device_name == "cpu":
+        return torch.device("cpu")
+    if device_name == "cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA evaluation was requested, but CUDA is unavailable")
+        return torch.device("cuda")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    return torch.device("cpu")
+
+
+def evaluate_records(
+    records: list[Any],
+    tokenizer: Any,
+    model: Any,
+    max_length: int,
+    device: torch.device | None = None,
+) -> tuple[dict[str, float], dict[str, Any]]:
+    """
+    Evaluate already-loaded records with an already-loaded model.
+
+    Args:
+        records: The labeled records to evaluate.
+        tokenizer: The tokenizer aligned with the model.
+        model: The token-classification model.
+        max_length: The maximum encoded sequence length.
+        device: Optional device where model inputs should be moved.
+
+    Returns:
+        The metric values and diagnostic details.
+    """
     model.eval()
     gold_slots: list[RequirementSlots] = []
     predicted_slots: list[RequirementSlots] = []
     gold_labels: list[list[str]] = []
     predicted_labels: list[list[str]] = []
     for record in records:
-        labels = predict_labels(record.tokens, tokenizer, model, args.max_length)
+        labels = predict_labels(record.tokens, tokenizer, model, max_length, device)
         gold_slots.append(record.slots)
         predicted_slots.append(decode_slots(record.tokens, labels))
         gold_labels.append(record.labels)
@@ -778,6 +857,7 @@ def main() -> None:
             "model_dir": str(args.model_dir),
             "split": args.split,
             "max_length": args.max_length,
+            "device": args.device,
             "detailed_report": args.clearml_detailed_report,
         },
     )

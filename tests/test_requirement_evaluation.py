@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import torch
+
 from scripts.requirement_model.evaluate import (
     build_failure_rows,
     compute_confusion_matrix,
@@ -9,6 +11,7 @@ from scripts.requirement_model.evaluate import (
     compute_metrics,
     compute_slot_accuracy_rows,
     decode_slots,
+    move_encoding_to_device,
 )
 from scripts.requirement_model.schema import RequirementSlots
 
@@ -134,3 +137,14 @@ def test_build_failure_rows_records_mismatch_details() -> None:
     assert rows[0]["mismatch_fields"] == "destination"
     assert "Tokyo" in rows[0]["gold_slots"]
     assert "Paris" in rows[0]["predicted_slots"]
+
+
+def test_move_encoding_to_device_keeps_cpu_tensors_when_device_is_none() -> None:
+    """
+    Verify evaluation helpers can keep tokenizer outputs on their current device.
+    """
+    tensor = torch.tensor([[1, 2]])
+
+    moved_encoding = move_encoding_to_device({"input_ids": tensor}, None)
+
+    assert moved_encoding["input_ids"] is tensor

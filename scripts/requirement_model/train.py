@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ from scripts.requirement_model.clearml_tracking import (
     ClearMlTracker,
     initialize_clearml_task,
 )
+from scripts.requirement_model.evaluate import evaluate_records
 from scripts.requirement_model.schema import (
     ID_TO_LABEL,
     LABEL_NAMES,
@@ -32,6 +34,31 @@ DEFAULT_DATA_DIR = Path("data/requirement_model")
 DEFAULT_OUTPUT_DIR = Path("models/requirement_model/latest")
 DEFAULT_MODEL_NAME = "distilbert-base-multilingual-cased"
 QUICK_MODEL_NAME = "sshleifer/tiny-distilbert-base-cased"
+DEFAULT_CONVERGENCE_METRIC = "macro_f1"
+
+
+@dataclass(frozen=True, slots=True)
+class ConvergenceSettings:
+    """
+    Early-stopping settings for validation-driven training.
+    """
+
+    max_epochs: int
+    min_epochs: int
+    patience: int
+    min_delta: float
+    monitor_metric: str = DEFAULT_CONVERGENCE_METRIC
+
+
+@dataclass(frozen=True, slots=True)
+class EpochMetrics:
+    """
+    Metrics recorded after one training epoch.
+    """
+
+    epoch: int
+    train_loss: float
+    validation_metrics: dict[str, float]
 
 
 class RequirementTokenDataset(Dataset[dict[str, torch.Tensor]]):
@@ -94,6 +121,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-name", default=DEFAULT_MODEL_NAME)
     parser.add_argument("--max-length", type=int, default=192)
     parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument("--max-epochs", type=int, default=None)
+    parser.add_argument("--min-epochs", type=int, default=1)
+    parser.add_argument("--patience", type=int, default=3)
+    parser.add_argument("--min-delta", type=float, default=0.001)
+    parser.add_argument("--validation-split", default="validation")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=5e-5)
     parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
@@ -230,6 +262,211 @@ def move_batch_to_device(
     }
 
 
+def build_convergence_settings(args: argparse.Namespace) -> ConvergenceSettings:
+    """
+    Build validated early-stopping settings from CLI arguments.
+
+    Args:
+        args: The parsed command-line arguments.
+
+    Returns:
+        The validated convergence settings.
+
+    Raises:
+        ValueError: Raised when the settings are inconsistent.
+    """
+    max_epochs = args.max_epochs if args.max_epochs is not None else args.epochs
+    if max_epochs < 1:
+        raise ValueError("max_epochs must be at least 1")
+    if args.min_epochs < 1:
+        raise ValueError("min_epochs must be at least 1")
+    if args.min_epochs > max_epochs:
+        raise ValueError("min_epochs cannot be greater than max_epochs")
+    if args.patience < 1:
+        raise ValueError("patience must be at least 1")
+    if args.min_delta < 0:
+        raise ValueError("min_delta cannot be negative")
+    return ConvergenceSettings(
+        max_epochs=max_epochs,
+        min_epochs=args.min_epochs,
+        patience=args.patience,
+        min_delta=args.min_delta,
+    )
+
+
+def load_validation_records(
+    data_dir: Path, split_name: str, quick: bool
+) -> list[RequirementTrainingRecord]:
+    """
+    Load validation records when full convergence training is enabled.
+
+    Args:
+        data_dir: The dataset directory.
+        split_name: The validation split name.
+        quick: Whether quick smoke training is enabled.
+
+    Returns:
+        Validation records, or an empty list for quick smoke training.
+    """
+    if quick:
+        return []
+    return load_jsonl(data_dir / f"{split_name}.jsonl")
+
+
+def is_metric_improved(
+    metric_value: float, best_metric_value: float | None, min_delta: float
+) -> bool:
+    """
+    Return whether a monitored metric improved enough to replace the best model.
+
+    Args:
+        metric_value: The current metric value.
+        best_metric_value: The best metric value seen so far.
+        min_delta: The minimum required improvement.
+
+    Returns:
+        Whether the metric improved.
+    """
+    if best_metric_value is None:
+        return True
+    return metric_value > best_metric_value + min_delta
+
+
+def should_stop_for_convergence(
+    epoch_number: int,
+    best_epoch: int | None,
+    settings: ConvergenceSettings,
+) -> bool:
+    """
+    Return whether early stopping should stop after an epoch.
+
+    Args:
+        epoch_number: The completed epoch number.
+        best_epoch: The epoch containing the current best validation metric.
+        settings: The convergence settings.
+
+    Returns:
+        Whether training should stop.
+    """
+    if epoch_number < settings.min_epochs or best_epoch is None:
+        return False
+    return epoch_number - best_epoch >= settings.patience
+
+
+def report_epoch_metrics_to_clearml(
+    tracker: ClearMlTracker,
+    epoch_number: int,
+    train_loss: float,
+    validation_metrics: dict[str, float],
+) -> None:
+    """
+    Report one epoch of training and validation metrics.
+
+    Args:
+        tracker: The optional ClearML tracker.
+        epoch_number: The completed epoch number.
+        train_loss: The average training loss.
+        validation_metrics: Validation metrics keyed by metric name.
+    """
+    tracker.report_scalar(
+        title="loss",
+        series="train",
+        value=train_loss,
+        iteration=epoch_number,
+    )
+    for metric_name, metric_value in sorted(validation_metrics.items()):
+        tracker.report_scalar(
+            title="validation",
+            series=metric_name,
+            value=metric_value,
+            iteration=epoch_number,
+        )
+
+
+def build_training_report(
+    model_name: str,
+    output_dir: Path,
+    settings: ConvergenceSettings,
+    history: list[EpochMetrics],
+    best_epoch: int | None,
+    best_metric_value: float | None,
+    stopped_early: bool,
+) -> dict[str, Any]:
+    """
+    Build a JSON-compatible training report.
+
+    Args:
+        model_name: The base model name.
+        output_dir: The saved model directory.
+        settings: The convergence settings used for training.
+        history: Per-epoch metric history.
+        best_epoch: The epoch selected as the best checkpoint.
+        best_metric_value: The best monitored validation metric value.
+        stopped_early: Whether early stopping ended training before max epochs.
+
+    Returns:
+        A JSON-compatible report.
+    """
+    return {
+        "model_name": model_name,
+        "output_dir": str(output_dir),
+        "convergence": {
+            "max_epochs": settings.max_epochs,
+            "min_epochs": settings.min_epochs,
+            "patience": settings.patience,
+            "min_delta": settings.min_delta,
+            "monitor_metric": settings.monitor_metric,
+        },
+        "epochs_ran": len(history),
+        "best_epoch": best_epoch,
+        "best_validation_metric": best_metric_value,
+        "stopped_early": stopped_early,
+        "history": [
+            {
+                "epoch": epoch_metrics.epoch,
+                "train_loss": epoch_metrics.train_loss,
+                "validation_metrics": dict(epoch_metrics.validation_metrics),
+            }
+            for epoch_metrics in history
+        ],
+    }
+
+
+def write_training_report(output_dir: Path, report: dict[str, Any]) -> None:
+    """
+    Write a training report into the model artifact directory.
+
+    Args:
+        output_dir: The model artifact directory.
+        report: The JSON-compatible report.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "training_report.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def format_epoch_metrics(
+    epoch_metrics: EpochMetrics, monitor_metric: str
+) -> str:
+    """
+    Format one epoch's metrics for command-line output.
+
+    Args:
+        epoch_metrics: The metrics recorded for the epoch.
+        monitor_metric: The validation metric used for convergence.
+
+    Returns:
+        A compact one-line metric summary.
+    """
+    summary = f"epoch {epoch_metrics.epoch}: loss={epoch_metrics.train_loss:.4f}"
+    if monitor_metric in epoch_metrics.validation_metrics:
+        metric_value = epoch_metrics.validation_metrics[monitor_metric]
+        summary += f" validation_{monitor_metric}={metric_value:.4f}"
+    return summary
+
+
 def train_model(
     args: argparse.Namespace, tracker: ClearMlTracker | None = None
 ) -> Path:
@@ -249,7 +486,11 @@ def train_model(
     output_dir = (
         Path("models/requirement_model/quick") if args.quick else args.output_dir
     )
+    convergence_settings = build_convergence_settings(args)
     records = load_training_records(args.data_dir, args.quick)
+    validation_records = load_validation_records(
+        args.data_dir, args.validation_split, args.quick
+    )
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
     device = resolve_device(args.device)
     print(f"training_device={device}")
@@ -269,8 +510,12 @@ def train_model(
         pin_memory=device.type == "cuda",
     )
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
+    history: list[EpochMetrics] = []
+    best_epoch: int | None = None
+    best_metric_value: float | None = None
+    stopped_early = False
     model.train()
-    for epoch_number in range(1, args.epochs + 1):
+    for epoch_number in range(1, convergence_settings.max_epochs + 1):
         total_loss = 0.0
         for batch in data_loader:
             batch = move_batch_to_device(batch, device)
@@ -281,16 +526,76 @@ def train_model(
             optimizer.step()
             total_loss += float(loss.detach())
         average_loss = total_loss / max(len(data_loader), 1)
-        print(f"epoch {epoch_number}: loss={average_loss:.4f}")
-        active_tracker.report_scalar(
-            title="loss",
-            series="train",
-            value=average_loss,
-            iteration=epoch_number,
+        validation_metrics: dict[str, float] = {}
+        if validation_records:
+            validation_metrics, _diagnostics = evaluate_records(
+                records=validation_records,
+                tokenizer=tokenizer,
+                model=model,
+                max_length=args.max_length,
+                device=device,
+            )
+            model.train()
+            metric_value = validation_metrics[convergence_settings.monitor_metric]
+            if is_metric_improved(
+                metric_value,
+                best_metric_value,
+                convergence_settings.min_delta,
+            ):
+                best_epoch = epoch_number
+                best_metric_value = metric_value
+                save_model_artifacts(
+                    output_dir,
+                    tokenizer,
+                    model,
+                    model_name,
+                    args.max_length,
+                )
+        epoch_metrics = EpochMetrics(
+            epoch=epoch_number,
+            train_loss=average_loss,
+            validation_metrics=validation_metrics,
         )
+        history.append(epoch_metrics)
+        report_epoch_metrics_to_clearml(
+            active_tracker,
+            epoch_number,
+            average_loss,
+            validation_metrics,
+        )
+        print(format_epoch_metrics(epoch_metrics, convergence_settings.monitor_metric))
         if args.quick:
             break
-    save_model_artifacts(output_dir, tokenizer, model, model_name, args.max_length)
+        if validation_records and should_stop_for_convergence(
+            epoch_number,
+            best_epoch,
+            convergence_settings,
+        ):
+            stopped_early = True
+            best_metric_text = (
+                "unknown" if best_metric_value is None else f"{best_metric_value:.4f}"
+            )
+            print(
+                "early_stopping="
+                f"epoch_{epoch_number}; best_epoch={best_epoch}; "
+                f"best_{convergence_settings.monitor_metric}="
+                f"{best_metric_text}"
+            )
+            break
+    if not validation_records:
+        best_epoch = len(history) if history else None
+        save_model_artifacts(output_dir, tokenizer, model, model_name, args.max_length)
+    training_report = build_training_report(
+        model_name=model_name,
+        output_dir=output_dir,
+        settings=convergence_settings,
+        history=history,
+        best_epoch=best_epoch,
+        best_metric_value=best_metric_value,
+        stopped_early=stopped_early,
+    )
+    write_training_report(output_dir, training_report)
+    active_tracker.upload_artifact("training_report", training_report)
     active_tracker.upload_artifact("model", str(output_dir))
     return output_dir
 
@@ -466,6 +771,11 @@ def main() -> None:
             "model_name": args.model_name,
             "max_length": args.max_length,
             "epochs": args.epochs,
+            "max_epochs": args.max_epochs,
+            "min_epochs": args.min_epochs,
+            "patience": args.patience,
+            "min_delta": args.min_delta,
+            "validation_split": args.validation_split,
             "batch_size": args.batch_size,
             "learning_rate": args.learning_rate,
             "device": args.device,

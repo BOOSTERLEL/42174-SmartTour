@@ -203,6 +203,32 @@ examples. The model report uploads model configuration, label maps, and the file
 manifest; add `--clearml-register-model` to register the trained output model in
 ClearML.
 
+Run a convergence-based model comparison when selecting the default requirement
+model:
+
+```bash
+uv run python scripts/requirement_model/compare_models.py --clearml --clearml-project Smartour --device cuda --batch-size 4 --max-epochs 20 --min-epochs 3 --patience 3 --min-delta 0.001 --register-winner
+```
+
+The comparison command trains the current baseline
+`distilbert-base-multilingual-cased` plus the English-focused candidates
+`distilbert-base-uncased` and `bert-base-cased`. Each model trains on
+`train.jsonl` and monitors `validation.jsonl` with early stopping on validation
+`macro_f1`: training runs for at least 3 epochs, stops after 3 epochs without a
+minimum 0.001 improvement, and caps at 20 epochs. The saved candidate artifact is
+the best validation checkpoint, not necessarily the final epoch.
+
+Each candidate is evaluated on `validation`, `test`, and `reviewed_test`. The
+comparison reports slot accuracy, exact-match accuracy, micro F1, macro F1,
+per-slot accuracy, per-label precision/recall/F1, BIO confusion matrices, and
+failed examples. Ranking uses reviewed-test slot accuracy first, then
+reviewed-test exact-match accuracy, reviewed-test macro F1, and validation macro
+F1 as tie breakers. The winning model is copied to
+`models/requirement_model/latest` and registered in ClearML when
+`--register-winner` is supplied. Local comparison summaries are written under
+`models/requirement_model/experiments/<run-id>`, while model and data directories
+remain ignored by Git.
+
 Run the local workflow DAG when the ClearML UI should show the audit, quick
 training, and evaluation steps as a pipeline without using a ClearML Agent queue:
 
