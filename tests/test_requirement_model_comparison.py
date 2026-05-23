@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,8 @@ from scripts.requirement_model.compare_models import (
     EVALUATION_SPLITS,
     ModelComparisonResult,
     build_comparison_metric_rows,
+    build_training_args,
+    load_hpo_summary,
     promote_winner_model,
     rank_results,
     run_comparison,
@@ -69,6 +72,35 @@ def make_result(
         metrics_by_split=metrics_by_split,
         diagnostics_by_split={split_name: {} for split_name in EVALUATION_SPLITS},
     )
+
+
+def make_hpo_summary(model_name: str = "model-a") -> dict[str, object]:
+    """
+    Build a valid HPO summary for comparison tests.
+
+    Args:
+        model_name: The tuned model name.
+
+    Returns:
+        A JSON-compatible HPO summary.
+    """
+    return {
+        "run_id": "hpo-run",
+        "run_dir": "models/requirement_model/hpo/hpo-run",
+        "model_name": model_name,
+        "best_trial": {
+            "trial_id": "trial-002",
+            "config": {
+                "learning_rate": 3e-5,
+                "batch_size": 8,
+                "max_length": 128,
+                "max_epochs": 6,
+                "min_epochs": 2,
+                "patience": 2,
+                "min_delta": 0.002,
+            },
+        },
+    }
 
 
 def test_rank_results_uses_declared_metric_tie_breakers(tmp_path: Path) -> None:
@@ -259,3 +291,172 @@ def test_run_comparison_does_not_promote_when_candidate_fails(
         )
 
     assert not did_promote
+
+
+def test_build_training_args_uses_matching_hpo_summary(tmp_path: Path) -> None:
+    """
+    Verify matching HPO summaries override only the selected model parameters.
+    """
+    args = argparse.Namespace(
+        data_dir=tmp_path / "data",
+        max_length=192,
+        max_epochs=20,
+        min_epochs=3,
+        patience=3,
+        min_delta=0.001,
+        batch_size=4,
+        learning_rate=5e-5,
+        device="cpu",
+        quick=False,
+        hpo_summary_data=make_hpo_summary("model-a"),
+    )
+
+    tuned_args = build_training_args(args, "model-a", tmp_path / "model-a")
+    default_args = build_training_args(args, "model-b", tmp_path / "model-b")
+
+    assert tuned_args.max_length == 128
+    assert tuned_args.max_epochs == 6
+    assert tuned_args.batch_size == 8
+    assert tuned_args.learning_rate == 3e-5
+    assert default_args.max_length == 192
+    assert default_args.batch_size == 4
+
+
+def test_run_comparison_honors_no_promote(tmp_path: Path) -> None:
+    """
+    Verify no-promote mode writes comparison artifacts without touching default.
+    """
+    did_promote = False
+    args = argparse.Namespace(
+        experiment_dir=tmp_path / "experiments",
+        default_model_dir=tmp_path / "latest",
+        model_name=("model-a", "model-b"),
+        register_winner=False,
+        promote_winner=False,
+        hpo_summary=None,
+    )
+
+    def train_evaluate_model(
+        comparison_args: argparse.Namespace,
+        model_name: str,
+        output_dir: Path,
+        tracker: ClearMlTracker,
+    ) -> ModelComparisonResult:
+        """
+        Return deterministic comparison results.
+
+        Args:
+            comparison_args: The comparison arguments.
+            model_name: The candidate model name.
+            output_dir: The output directory.
+            tracker: The optional ClearML tracker.
+
+        Returns:
+            A model comparison result.
+        """
+        return make_result(
+            model_name,
+            output_dir,
+            reviewed_slot_accuracy=0.9 if model_name == "model-a" else 0.8,
+            reviewed_exact_match=0.5,
+            reviewed_macro_f1=0.8,
+            validation_macro_f1=0.7,
+        )
+
+    def promote_model(source_dir: Path, target_dir: Path) -> None:
+        """
+        Record promotion attempts.
+
+        Args:
+            source_dir: The winner source directory.
+            target_dir: The default target directory.
+        """
+        nonlocal did_promote
+        did_promote = True
+
+    comparison_run = run_comparison(
+        args,
+        tracker=ClearMlTracker(),
+        train_evaluate_model=train_evaluate_model,
+        promote_model=promote_model,
+    )
+
+    assert not did_promote
+    assert comparison_run.winner.model_name == "model-a"
+    assert comparison_run.summary["promoted"] is False
+
+
+def test_load_hpo_summary_rejects_invalid_summary_before_training(
+    tmp_path: Path,
+) -> None:
+    """
+    Verify invalid HPO summaries fail before any model candidate trains.
+    """
+    hpo_summary_path = tmp_path / "hpo_summary.json"
+    hpo_summary_path.write_text(
+        json.dumps({"model_name": "model-a", "best_trial": None}),
+        encoding="utf-8",
+    )
+    did_train = False
+    args = argparse.Namespace(
+        experiment_dir=tmp_path / "experiments",
+        default_model_dir=tmp_path / "latest",
+        model_name=("model-a", "model-b"),
+        register_winner=False,
+        promote_winner=False,
+        hpo_summary=hpo_summary_path,
+    )
+
+    def train_evaluate_model(
+        comparison_args: argparse.Namespace,
+        model_name: str,
+        output_dir: Path,
+        tracker: ClearMlTracker,
+    ) -> ModelComparisonResult:
+        """
+        Record unexpected training attempts.
+
+        Args:
+            comparison_args: The comparison arguments.
+            model_name: The candidate model name.
+            output_dir: The output directory.
+            tracker: The optional ClearML tracker.
+
+        Returns:
+            A model comparison result.
+        """
+        nonlocal did_train
+        did_train = True
+        return make_result(
+            model_name,
+            output_dir,
+            reviewed_slot_accuracy=0.9,
+            reviewed_exact_match=0.5,
+            reviewed_macro_f1=0.8,
+            validation_macro_f1=0.7,
+        )
+
+    with pytest.raises(ValueError, match="best_trial"):
+        run_comparison(
+            args,
+            tracker=ClearMlTracker(),
+            train_evaluate_model=train_evaluate_model,
+        )
+
+    assert not did_train
+
+
+def test_load_hpo_summary_accepts_valid_matching_summary(tmp_path: Path) -> None:
+    """
+    Verify valid HPO summaries are loaded when they match a selected model.
+    """
+    hpo_summary_path = tmp_path / "hpo_summary.json"
+    hpo_summary_path.write_text(
+        json.dumps(make_hpo_summary("model-a")),
+        encoding="utf-8",
+    )
+
+    summary = load_hpo_summary(hpo_summary_path, ("model-a", "model-b"))
+
+    assert summary is not None
+    assert summary["model_name"] == "model-a"

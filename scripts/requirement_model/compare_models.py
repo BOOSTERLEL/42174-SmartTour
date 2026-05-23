@@ -12,7 +12,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import torch
 from transformers import AutoModelForTokenClassification, AutoTokenizer
@@ -169,6 +169,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--learning-rate", type=float, default=5e-5)
     parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
+    parser.add_argument("--quick", action="store_true")
+    parser.add_argument("--hpo-summary", type=Path, default=None)
+    parser.add_argument(
+        "--no-promote",
+        dest="promote_winner",
+        action="store_false",
+        default=True,
+    )
     parser.add_argument("--clearml", action="store_true")
     parser.add_argument("--clearml-project", default=DEFAULT_CLEARML_PROJECT)
     parser.add_argument(
@@ -236,22 +244,85 @@ def build_training_args(
     Returns:
         The training argument namespace expected by `train_model`.
     """
+    training_parameters = resolve_training_parameters(args, model_name)
     return argparse.Namespace(
         data_dir=args.data_dir,
         output_dir=output_dir,
         model_name=model_name,
-        max_length=args.max_length,
-        epochs=args.max_epochs,
-        max_epochs=args.max_epochs,
-        min_epochs=args.min_epochs,
-        patience=args.patience,
-        min_delta=args.min_delta,
+        max_length=training_parameters["max_length"],
+        epochs=training_parameters["max_epochs"],
+        max_epochs=training_parameters["max_epochs"],
+        min_epochs=training_parameters["min_epochs"],
+        patience=training_parameters["patience"],
+        min_delta=training_parameters["min_delta"],
         validation_split="validation",
-        batch_size=args.batch_size,
-        learning_rate=args.learning_rate,
+        batch_size=training_parameters["batch_size"],
+        learning_rate=training_parameters["learning_rate"],
         device=args.device,
-        quick=False,
+        quick=getattr(args, "quick", False),
     )
+
+
+def resolve_training_parameters(
+    args: argparse.Namespace, model_name: str
+) -> dict[str, int | float]:
+    """
+    Resolve training parameters from CLI defaults and optional HPO output.
+
+    Args:
+        args: The comparison arguments.
+        model_name: The model candidate name.
+
+    Returns:
+        The resolved training parameters.
+    """
+    parameters: dict[str, int | float] = {
+        "max_length": args.max_length,
+        "max_epochs": args.max_epochs,
+        "min_epochs": args.min_epochs,
+        "patience": args.patience,
+        "min_delta": args.min_delta,
+        "batch_size": args.batch_size,
+        "learning_rate": args.learning_rate,
+    }
+    hpo_config = find_hpo_config_for_model(
+        getattr(args, "hpo_summary_data", None),
+        model_name,
+    )
+    if hpo_config is None:
+        return parameters
+    parameters.update(
+        {
+            "max_length": int(hpo_config["max_length"]),
+            "max_epochs": int(hpo_config["max_epochs"]),
+            "min_epochs": int(hpo_config["min_epochs"]),
+            "patience": int(hpo_config["patience"]),
+            "min_delta": float(hpo_config["min_delta"]),
+            "batch_size": int(hpo_config["batch_size"]),
+            "learning_rate": float(hpo_config["learning_rate"]),
+        }
+    )
+    return parameters
+
+
+def find_hpo_config_for_model(
+    hpo_summary: dict[str, Any] | None,
+    model_name: str,
+) -> dict[str, Any] | None:
+    """
+    Find the best HPO trial config for a model candidate.
+
+    Args:
+        hpo_summary: The validated HPO summary, if provided.
+        model_name: The model candidate name.
+
+    Returns:
+        The HPO trial config for this model, or None when not applicable.
+    """
+    if hpo_summary is None or hpo_summary["model_name"] != model_name:
+        return None
+    best_trial = cast(dict[str, Any], hpo_summary["best_trial"])
+    return cast(dict[str, Any], best_trial["config"])
 
 
 def train_and_evaluate_model(
@@ -275,12 +346,12 @@ def train_and_evaluate_model(
     model_slug = slugify_model_name(model_name)
     scoped_tracker = ScopedClearMlTracker(tracker, model_slug)
     training_args = build_training_args(args, model_name, output_dir)
-    train_model(training_args, scoped_tracker)
-    training_report = load_training_report(output_dir)
+    trained_output_dir = train_model(training_args, scoped_tracker)
+    training_report = load_training_report(trained_output_dir)
     metrics_by_split, diagnostics_by_split = evaluate_model_splits(
         data_dir=args.data_dir,
-        model_dir=output_dir,
-        max_length=args.max_length,
+        model_dir=trained_output_dir,
+        max_length=training_args.max_length,
         device_name=args.device,
         tracker=tracker,
         model_slug=model_slug,
@@ -288,7 +359,7 @@ def train_and_evaluate_model(
     return ModelComparisonResult(
         model_name=model_name,
         model_slug=model_slug,
-        output_dir=output_dir,
+        output_dir=trained_output_dir,
         training_report=training_report,
         metrics_by_split=metrics_by_split,
         diagnostics_by_split=diagnostics_by_split,
@@ -317,6 +388,129 @@ def load_training_report(output_dir: Path) -> dict[str, Any]:
             "history": [],
         }
     return json.loads(report_path.read_text(encoding="utf-8"))
+
+
+def load_hpo_summary(
+    summary_path: Path | None, model_names: Sequence[str]
+) -> dict[str, Any] | None:
+    """
+    Load and validate an optional HPO summary before comparison training starts.
+
+    Args:
+        summary_path: The HPO summary path, if one was provided.
+        model_names: The model candidates selected for comparison.
+
+    Returns:
+        The validated HPO summary, or None when no summary was supplied.
+
+    Raises:
+        FileNotFoundError: Raised when the summary path does not exist.
+        ValueError: Raised when the summary shape is invalid.
+    """
+    if summary_path is None:
+        return None
+    if not summary_path.exists():
+        raise FileNotFoundError(f"missing HPO summary: {summary_path}")
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    if not isinstance(summary, dict):
+        raise ValueError("HPO summary must be a JSON object")
+    validate_hpo_summary(summary, model_names)
+    return summary
+
+
+def validate_hpo_summary(summary: dict[str, Any], model_names: Sequence[str]) -> None:
+    """
+    Validate an HPO summary used to tune comparison training.
+
+    Args:
+        summary: The decoded HPO summary.
+        model_names: The model candidates selected for comparison.
+
+    Raises:
+        ValueError: Raised when required fields are missing or malformed.
+    """
+    model_name = summary.get("model_name")
+    if not isinstance(model_name, str) or not model_name:
+        raise ValueError("HPO summary must include model_name")
+    if model_name not in model_names:
+        raise ValueError("HPO summary model_name must match a selected model")
+    best_trial = summary.get("best_trial")
+    if not isinstance(best_trial, dict):
+        raise ValueError("HPO summary must include best_trial")
+    config = best_trial.get("config")
+    if not isinstance(config, dict):
+        raise ValueError("HPO summary best_trial must include config")
+    require_positive_number(config, "learning_rate")
+    require_positive_integer(config, "batch_size")
+    require_positive_integer(config, "max_length")
+    max_epochs = require_positive_integer(config, "max_epochs")
+    min_epochs = require_positive_integer(config, "min_epochs")
+    require_positive_integer(config, "patience")
+    require_non_negative_number(config, "min_delta")
+    if min_epochs > max_epochs:
+        raise ValueError("HPO summary min_epochs cannot exceed max_epochs")
+
+
+def require_positive_integer(config: dict[str, Any], field_name: str) -> int:
+    """
+    Read and validate a positive integer HPO config field.
+
+    Args:
+        config: The HPO trial config.
+        field_name: The config field name.
+
+    Returns:
+        The integer field value.
+
+    Raises:
+        ValueError: Raised when the field is missing or invalid.
+    """
+    value = config.get(field_name)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"HPO summary config {field_name} must be a positive integer")
+    return value
+
+
+def require_positive_number(config: dict[str, Any], field_name: str) -> float:
+    """
+    Read and validate a positive numeric HPO config field.
+
+    Args:
+        config: The HPO trial config.
+        field_name: The config field name.
+
+    Returns:
+        The numeric field value.
+
+    Raises:
+        ValueError: Raised when the field is missing or invalid.
+    """
+    value = config.get(field_name)
+    if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
+        raise ValueError(f"HPO summary config {field_name} must be a positive number")
+    return float(value)
+
+
+def require_non_negative_number(config: dict[str, Any], field_name: str) -> float:
+    """
+    Read and validate a non-negative numeric HPO config field.
+
+    Args:
+        config: The HPO trial config.
+        field_name: The config field name.
+
+    Returns:
+        The numeric field value.
+
+    Raises:
+        ValueError: Raised when the field is missing or invalid.
+    """
+    value = config.get(field_name)
+    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+        raise ValueError(
+            f"HPO summary config {field_name} must be a non-negative number"
+        )
+    return float(value)
 
 
 def evaluate_model_splits(
@@ -474,6 +668,8 @@ def build_comparison_summary(
     run_dir: Path,
     results: Sequence[ModelComparisonResult],
     winner: ModelComparisonResult,
+    promote_winner: bool,
+    hpo_summary: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """
     Build a JSON-compatible comparison summary.
@@ -483,6 +679,8 @@ def build_comparison_summary(
         run_dir: The comparison run directory.
         results: The model results.
         winner: The selected winning result.
+        promote_winner: Whether this run promoted the winner.
+        hpo_summary: Optional HPO summary used for tuned parameters.
 
     Returns:
         The comparison summary.
@@ -490,6 +688,8 @@ def build_comparison_summary(
     return {
         "run_id": run_id,
         "run_dir": str(run_dir),
+        "promoted": promote_winner,
+        "hpo": build_hpo_summary_reference(hpo_summary),
         "winner": {
             "model_name": winner.model_name,
             "model_slug": winner.model_slug,
@@ -511,6 +711,30 @@ def build_comparison_summary(
             }
             for result in results
         ],
+    }
+
+
+def build_hpo_summary_reference(
+    hpo_summary: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """
+    Build a compact HPO reference for comparison summaries.
+
+    Args:
+        hpo_summary: Optional HPO summary used for tuned parameters.
+
+    Returns:
+        A compact HPO reference, or None when HPO was not used.
+    """
+    if hpo_summary is None:
+        return None
+    best_trial = cast(dict[str, Any], hpo_summary["best_trial"])
+    return {
+        "run_id": hpo_summary.get("run_id"),
+        "run_dir": hpo_summary.get("run_dir"),
+        "model_name": hpo_summary["model_name"],
+        "best_trial_id": best_trial.get("trial_id"),
+        "best_config": best_trial["config"],
     }
 
 
@@ -678,20 +902,39 @@ def run_comparison(
     run_id = build_run_id()
     run_dir = args.experiment_dir / run_id
     model_names = resolve_model_names(args.model_name)
+    hpo_summary = load_hpo_summary(getattr(args, "hpo_summary", None), model_names)
+    comparison_args = argparse.Namespace(
+        **vars(args),
+        hpo_summary_data=hpo_summary,
+    )
     results: list[ModelComparisonResult] = []
     for model_name in model_names:
         model_slug = slugify_model_name(model_name)
         output_dir = run_dir / model_slug
-        result = train_evaluate_model(args, model_name, output_dir, active_tracker)
+        result = train_evaluate_model(
+            comparison_args,
+            model_name,
+            output_dir,
+            active_tracker,
+        )
         results.append(result)
     ranked_results = rank_results(results)
     winner = ranked_results[0]
-    summary = build_comparison_summary(run_id, run_dir, ranked_results, winner)
+    should_promote_winner = getattr(args, "promote_winner", True)
+    summary = build_comparison_summary(
+        run_id,
+        run_dir,
+        ranked_results,
+        winner,
+        promote_winner=should_promote_winner,
+        hpo_summary=hpo_summary,
+    )
     metric_rows = build_comparison_metric_rows(ranked_results)
     write_comparison_artifacts(run_dir, summary, metric_rows)
-    promote_model(winner.output_dir, args.default_model_dir)
+    if should_promote_winner:
+        promote_model(winner.output_dir, args.default_model_dir)
     registration_model_dir: Path | None = None
-    if args.register_winner and active_tracker.is_enabled:
+    if args.register_winner and active_tracker.is_enabled and should_promote_winner:
         registration_model_dir = run_dir / f"{winner.model_slug}-clearml-registration"
         remove_directory(registration_model_dir)
         shutil.copytree(args.default_model_dir, registration_model_dir)
@@ -740,6 +983,9 @@ def main() -> None:
             "batch_size": args.batch_size,
             "learning_rate": args.learning_rate,
             "device": args.device,
+            "quick": args.quick,
+            "hpo_summary": str(args.hpo_summary) if args.hpo_summary else None,
+            "promote_winner": args.promote_winner,
             "register_winner": args.register_winner,
         },
     )
@@ -750,7 +996,10 @@ def main() -> None:
         print(f"winner={comparison_run.winner.model_name}")
         for metric_name, metric_value in sorted(winner_metrics.items()):
             print(f"winner_{WINNER_SPLIT}_{metric_name}={metric_value:.4f}")
-        print(f"promoted_default_model={args.default_model_dir}")
+        if args.promote_winner:
+            print(f"promoted_default_model={args.default_model_dir}")
+        else:
+            print("promoted_default_model=false")
     finally:
         tracker.close()
 

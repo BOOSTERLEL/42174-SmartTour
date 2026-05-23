@@ -1,0 +1,342 @@
+name: Model Ops
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Model operation to run.
+        required: true
+        type: choice
+        default: audit
+        options:
+          - audit
+          - quick_train_eval
+          - hpo
+          - compare
+          - all
+      clearml:
+        description: Report the selected operation to ClearML.
+        required: true
+        type: boolean
+        default: false
+      promote_winner:
+        description: Promote the comparison winner to the default model path.
+        required: true
+        type: boolean
+        default: false
+      quick_compare:
+        description: Use quick smoke training for comparison runs.
+        required: true
+        type: boolean
+        default: true
+      device:
+        description: Torch device selection for model operations.
+        required: true
+        type: choice
+        default: cpu
+        options:
+          - cpu
+          - auto
+          - cuda
+      model_names:
+        description: Comma-separated model names for comparison.
+        required: true
+        type: string
+        default: distilbert-base-multilingual-cased,distilbert-base-uncased,bert-base-cased
+      hpo_model_name:
+        description: Model name to tune during HPO.
+        required: true
+        type: string
+        default: distilbert-base-multilingual-cased
+      hpo_summary_path:
+        description: Optional existing HPO summary path for comparison.
+        required: false
+        type: string
+        default: ""
+      learning_rate_values:
+        description: Comma-separated HPO learning rates.
+        required: true
+        type: string
+        default: "5e-5"
+      batch_size_values:
+        description: Comma-separated HPO batch sizes.
+        required: true
+        type: string
+        default: "4"
+      max_length_values:
+        description: Comma-separated HPO tokenizer lengths.
+        required: true
+        type: string
+        default: "192"
+      trial_limit:
+        description: Maximum number of HPO trials.
+        required: true
+        type: string
+        default: "1"
+      max_epochs:
+        description: Maximum epochs for HPO and comparison runs.
+        required: true
+        type: string
+        default: "1"
+      min_epochs:
+        description: Minimum epochs for HPO and comparison runs.
+        required: true
+        type: string
+        default: "1"
+      patience:
+        description: Early-stopping patience for HPO and comparison runs.
+        required: true
+        type: string
+        default: "1"
+      min_delta:
+        description: Early-stopping minimum delta for HPO and comparison runs.
+        required: true
+        type: string
+        default: "0.001"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-ops-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  model-ops:
+    name: Model Operations
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_MAPS_API_KEY: ci-dummy
+      MODEL_OPS_HPO_RUN_ID: model-ops-${{ github.run_id }}
+      MODEL_OPS_HPO_SUMMARY: models/requirement_model/hpo/model-ops-${{ github.run_id }}/hpo_summary.json
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache uv packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
+      - name: Install uv
+        run: python -m pip install --upgrade pip uv
+
+      - name: Install backend dependencies
+        run: uv sync --dev
+
+      - name: Audit requirement data
+        if: ${{ (inputs.operation == 'audit' || inputs.operation == 'all') && !inputs.clearml }}
+        run: uv run python scripts/requirement_model/audit_data.py --reviewed-test --strict
+
+      - name: Audit requirement data with ClearML
+        if: ${{ (inputs.operation == 'audit' || inputs.operation == 'all') && inputs.clearml }}
+        env:
+          CLEARML_API_ACCESS_KEY: ${{ secrets.CLEARML_API_ACCESS_KEY }}
+          CLEARML_API_SECRET_KEY: ${{ secrets.CLEARML_API_SECRET_KEY }}
+          CLEARML_API_HOST: ${{ secrets.CLEARML_API_HOST }}
+          CLEARML_WEB_HOST: ${{ secrets.CLEARML_WEB_HOST }}
+          CLEARML_FILES_HOST: ${{ secrets.CLEARML_FILES_HOST }}
+        run: >
+          uv run python scripts/requirement_model/audit_data.py
+          --reviewed-test
+          --strict
+          --clearml
+          --clearml-report-data-profile
+
+      - name: Quick train and evaluate
+        if: ${{ (inputs.operation == 'quick_train_eval' || inputs.operation == 'all') && !inputs.clearml }}
+        run: |
+          uv run python scripts/requirement_model/train.py --quick --device "${{ inputs.device }}"
+          uv run python scripts/requirement_model/evaluate.py --model-dir models/requirement_model/quick --split test --device "${{ inputs.device }}"
+
+      - name: Quick train and evaluate with ClearML
+        if: ${{ (inputs.operation == 'quick_train_eval' || inputs.operation == 'all') && inputs.clearml }}
+        env:
+          CLEARML_API_ACCESS_KEY: ${{ secrets.CLEARML_API_ACCESS_KEY }}
+          CLEARML_API_SECRET_KEY: ${{ secrets.CLEARML_API_SECRET_KEY }}
+          CLEARML_API_HOST: ${{ secrets.CLEARML_API_HOST }}
+          CLEARML_WEB_HOST: ${{ secrets.CLEARML_WEB_HOST }}
+          CLEARML_FILES_HOST: ${{ secrets.CLEARML_FILES_HOST }}
+        run: |
+          uv run python scripts/requirement_model/train.py --quick --device "${{ inputs.device }}" --clearml
+          uv run python scripts/requirement_model/evaluate.py --model-dir models/requirement_model/quick --split test --device "${{ inputs.device }}" --clearml
+
+      - name: Run HPO
+        if: ${{ (inputs.operation == 'hpo' || inputs.operation == 'all') && !inputs.clearml }}
+        env:
+          HPO_MODEL_NAME: ${{ inputs.hpo_model_name }}
+          LEARNING_RATE_VALUES: ${{ inputs.learning_rate_values }}
+          BATCH_SIZE_VALUES: ${{ inputs.batch_size_values }}
+          MAX_LENGTH_VALUES: ${{ inputs.max_length_values }}
+          TRIAL_LIMIT: ${{ inputs.trial_limit }}
+          MAX_EPOCHS: ${{ inputs.max_epochs }}
+          MIN_EPOCHS: ${{ inputs.min_epochs }}
+          PATIENCE: ${{ inputs.patience }}
+          MIN_DELTA: ${{ inputs.min_delta }}
+          DEVICE: ${{ inputs.device }}
+        run: |
+          uv run python scripts/requirement_model/hpo.py \
+            --run-id "$MODEL_OPS_HPO_RUN_ID" \
+            --model-name "$HPO_MODEL_NAME" \
+            --learning-rate-values "$LEARNING_RATE_VALUES" \
+            --batch-size-values "$BATCH_SIZE_VALUES" \
+            --max-length-values "$MAX_LENGTH_VALUES" \
+            --trial-limit "$TRIAL_LIMIT" \
+            --max-epochs "$MAX_EPOCHS" \
+            --min-epochs "$MIN_EPOCHS" \
+            --patience "$PATIENCE" \
+            --min-delta "$MIN_DELTA" \
+            --device "$DEVICE"
+
+      - name: Run HPO with ClearML
+        if: ${{ (inputs.operation == 'hpo' || inputs.operation == 'all') && inputs.clearml }}
+        env:
+          HPO_MODEL_NAME: ${{ inputs.hpo_model_name }}
+          LEARNING_RATE_VALUES: ${{ inputs.learning_rate_values }}
+          BATCH_SIZE_VALUES: ${{ inputs.batch_size_values }}
+          MAX_LENGTH_VALUES: ${{ inputs.max_length_values }}
+          TRIAL_LIMIT: ${{ inputs.trial_limit }}
+          MAX_EPOCHS: ${{ inputs.max_epochs }}
+          MIN_EPOCHS: ${{ inputs.min_epochs }}
+          PATIENCE: ${{ inputs.patience }}
+          MIN_DELTA: ${{ inputs.min_delta }}
+          DEVICE: ${{ inputs.device }}
+          CLEARML_API_ACCESS_KEY: ${{ secrets.CLEARML_API_ACCESS_KEY }}
+          CLEARML_API_SECRET_KEY: ${{ secrets.CLEARML_API_SECRET_KEY }}
+          CLEARML_API_HOST: ${{ secrets.CLEARML_API_HOST }}
+          CLEARML_WEB_HOST: ${{ secrets.CLEARML_WEB_HOST }}
+          CLEARML_FILES_HOST: ${{ secrets.CLEARML_FILES_HOST }}
+        run: |
+          uv run python scripts/requirement_model/hpo.py \
+            --run-id "$MODEL_OPS_HPO_RUN_ID" \
+            --model-name "$HPO_MODEL_NAME" \
+            --learning-rate-values "$LEARNING_RATE_VALUES" \
+            --batch-size-values "$BATCH_SIZE_VALUES" \
+            --max-length-values "$MAX_LENGTH_VALUES" \
+            --trial-limit "$TRIAL_LIMIT" \
+            --max-epochs "$MAX_EPOCHS" \
+            --min-epochs "$MIN_EPOCHS" \
+            --patience "$PATIENCE" \
+            --min-delta "$MIN_DELTA" \
+            --device "$DEVICE" \
+            --clearml
+
+      - name: Compare models
+        if: ${{ (inputs.operation == 'compare' || inputs.operation == 'all') && !inputs.clearml }}
+        env:
+          MODEL_NAMES: ${{ inputs.model_names }}
+          HPO_SUMMARY_PATH: ${{ inputs.hpo_summary_path }}
+          PROMOTE_WINNER: ${{ inputs.promote_winner }}
+          QUICK_COMPARE: ${{ inputs.quick_compare }}
+          MAX_EPOCHS: ${{ inputs.max_epochs }}
+          MIN_EPOCHS: ${{ inputs.min_epochs }}
+          PATIENCE: ${{ inputs.patience }}
+          MIN_DELTA: ${{ inputs.min_delta }}
+          DEVICE: ${{ inputs.device }}
+        run: |
+          set -euo pipefail
+          MODEL_ARGS=()
+          IFS=',' read -ra MODELS <<< "$MODEL_NAMES"
+          for RAW_MODEL in "${MODELS[@]}"; do
+            MODEL_NAME="$(echo "$RAW_MODEL" | xargs)"
+            if [ -n "$MODEL_NAME" ]; then
+              MODEL_ARGS+=(--model-name "$MODEL_NAME")
+            fi
+          done
+          PROMOTION_ARGS=(--no-promote)
+          if [ "$PROMOTE_WINNER" = "true" ]; then
+            PROMOTION_ARGS=()
+          fi
+          QUICK_ARGS=()
+          if [ "$QUICK_COMPARE" = "true" ]; then
+            QUICK_ARGS=(--quick)
+          fi
+          HPO_ARGS=()
+          if [ -n "$HPO_SUMMARY_PATH" ]; then
+            HPO_ARGS=(--hpo-summary "$HPO_SUMMARY_PATH")
+          elif [ -f "$MODEL_OPS_HPO_SUMMARY" ]; then
+            HPO_ARGS=(--hpo-summary "$MODEL_OPS_HPO_SUMMARY")
+          fi
+          uv run python scripts/requirement_model/compare_models.py \
+            "${MODEL_ARGS[@]}" \
+            "${PROMOTION_ARGS[@]}" \
+            "${QUICK_ARGS[@]}" \
+            "${HPO_ARGS[@]}" \
+            --max-epochs "$MAX_EPOCHS" \
+            --min-epochs "$MIN_EPOCHS" \
+            --patience "$PATIENCE" \
+            --min-delta "$MIN_DELTA" \
+            --device "$DEVICE"
+
+      - name: Compare models with ClearML
+        if: ${{ (inputs.operation == 'compare' || inputs.operation == 'all') && inputs.clearml }}
+        env:
+          MODEL_NAMES: ${{ inputs.model_names }}
+          HPO_SUMMARY_PATH: ${{ inputs.hpo_summary_path }}
+          PROMOTE_WINNER: ${{ inputs.promote_winner }}
+          QUICK_COMPARE: ${{ inputs.quick_compare }}
+          MAX_EPOCHS: ${{ inputs.max_epochs }}
+          MIN_EPOCHS: ${{ inputs.min_epochs }}
+          PATIENCE: ${{ inputs.patience }}
+          MIN_DELTA: ${{ inputs.min_delta }}
+          DEVICE: ${{ inputs.device }}
+          CLEARML_API_ACCESS_KEY: ${{ secrets.CLEARML_API_ACCESS_KEY }}
+          CLEARML_API_SECRET_KEY: ${{ secrets.CLEARML_API_SECRET_KEY }}
+          CLEARML_API_HOST: ${{ secrets.CLEARML_API_HOST }}
+          CLEARML_WEB_HOST: ${{ secrets.CLEARML_WEB_HOST }}
+          CLEARML_FILES_HOST: ${{ secrets.CLEARML_FILES_HOST }}
+        run: |
+          set -euo pipefail
+          MODEL_ARGS=()
+          IFS=',' read -ra MODELS <<< "$MODEL_NAMES"
+          for RAW_MODEL in "${MODELS[@]}"; do
+            MODEL_NAME="$(echo "$RAW_MODEL" | xargs)"
+            if [ -n "$MODEL_NAME" ]; then
+              MODEL_ARGS+=(--model-name "$MODEL_NAME")
+            fi
+          done
+          PROMOTION_ARGS=(--no-promote)
+          if [ "$PROMOTE_WINNER" = "true" ]; then
+            PROMOTION_ARGS=()
+          fi
+          QUICK_ARGS=()
+          if [ "$QUICK_COMPARE" = "true" ]; then
+            QUICK_ARGS=(--quick)
+          fi
+          HPO_ARGS=()
+          if [ -n "$HPO_SUMMARY_PATH" ]; then
+            HPO_ARGS=(--hpo-summary "$HPO_SUMMARY_PATH")
+          elif [ -f "$MODEL_OPS_HPO_SUMMARY" ]; then
+            HPO_ARGS=(--hpo-summary "$MODEL_OPS_HPO_SUMMARY")
+          fi
+          uv run python scripts/requirement_model/compare_models.py \
+            "${MODEL_ARGS[@]}" \
+            "${PROMOTION_ARGS[@]}" \
+            "${QUICK_ARGS[@]}" \
+            "${HPO_ARGS[@]}" \
+            --max-epochs "$MAX_EPOCHS" \
+            --min-epochs "$MIN_EPOCHS" \
+            --patience "$PATIENCE" \
+            --min-delta "$MIN_DELTA" \
+            --device "$DEVICE" \
+            --clearml
+
+      - name: Upload model operation summaries
+        if: ${{ always() && (inputs.operation == 'hpo' || inputs.operation == 'compare' || inputs.operation == 'all') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-operation-summaries-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            models/requirement_model/hpo/**/hpo_summary.json
+            models/requirement_model/hpo/**/hpo_trials.csv
+            models/requirement_model/experiments/**/comparison_summary.json
+            models/requirement_model/experiments/**/comparison_metrics.csv

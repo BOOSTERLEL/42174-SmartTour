@@ -129,6 +129,35 @@ GET /api/google-maps/probe
 GET /api/google-maps/probe?live=true
 ```
 
+## CI/CD
+
+The repository has two GitHub Actions workflows:
+
+- `CI`: runs on pull requests, pushes to `main`, and manual dispatch. It runs
+  backend tests, Ruff, mypy, frontend Prettier check, ESLint, TypeScript, and
+  `pnpm build`. It uses dummy Google Maps values and does not require ClearML or
+  production secrets.
+- `Model Ops`: manual-only workflow for requirement-model operations. It can run
+  data audit, quick train/eval, HPO, model comparison, or all operations.
+  `promote_winner` defaults to `false`, so comparison runs do not update
+  `models/requirement_model/latest` unless promotion is explicitly enabled.
+
+Configure these GitHub repository secrets only when the `Model Ops` workflow is
+run with `clearml=true`:
+
+```text
+CLEARML_API_ACCESS_KEY
+CLEARML_API_SECRET_KEY
+CLEARML_API_HOST
+CLEARML_WEB_HOST
+CLEARML_FILES_HOST
+```
+
+The `Model Ops` workflow uploads only summary artifacts:
+`hpo_summary.json`, `hpo_trials.csv`, `comparison_summary.json`, and
+`comparison_metrics.csv`. It does not commit model binaries, generated datasets,
+or logs.
+
 ## Requirement Model Data
 
 The active requirement model data workflow generates English-only training data.
@@ -210,6 +239,41 @@ model:
 uv run python scripts/requirement_model/compare_models.py --clearml --clearml-project Smartour --device cuda --batch-size 4 --max-epochs 20 --min-epochs 3 --patience 3 --min-delta 0.001 --register-winner
 ```
 
+Run a deterministic HPO search for the current baseline model:
+
+```bash
+uv run python scripts/requirement_model/hpo.py \
+  --model-name distilbert-base-multilingual-cased \
+  --learning-rate-values 2e-5,3e-5,5e-5 \
+  --batch-size-values 4,8 \
+  --max-length-values 128,192 \
+  --trial-limit 6 \
+  --max-epochs 8 \
+  --min-epochs 3 \
+  --patience 2 \
+  --objective-split validation \
+  --objective-metric macro_f1 \
+  --clearml
+```
+
+HPO writes per-trial model artifacts and training reports under
+`models/requirement_model/hpo/<run-id>/<trial-id>`, plus
+`hpo_summary.json` and `hpo_trials.csv` under the run directory. The summary
+records every trial config, status, objective score, metrics, output directory,
+and the selected best trial.
+
+Use an HPO summary to tune matching model parameters during comparison:
+
+```bash
+uv run python scripts/requirement_model/compare_models.py \
+  --hpo-summary models/requirement_model/hpo/<run-id>/hpo_summary.json \
+  --model-name distilbert-base-multilingual-cased \
+  --model-name distilbert-base-uncased \
+  --model-name bert-base-cased \
+  --no-promote \
+  --clearml
+```
+
 The comparison command trains the current baseline
 `distilbert-base-multilingual-cased` plus the English-focused candidates
 `distilbert-base-uncased` and `bert-base-cased`. Each model trains on
@@ -225,9 +289,10 @@ failed examples. Ranking uses reviewed-test slot accuracy first, then
 reviewed-test exact-match accuracy, reviewed-test macro F1, and validation macro
 F1 as tie breakers. The winning model is copied to
 `models/requirement_model/latest` and registered in ClearML when
-`--register-winner` is supplied. Local comparison summaries are written under
-`models/requirement_model/experiments/<run-id>`, while model and data directories
-remain ignored by Git.
+`--register-winner` is supplied. Add `--no-promote` for workflow or review runs
+that should compare models without changing the default runtime artifact. Local
+comparison summaries are written under `models/requirement_model/experiments/<run-id>`,
+while model and data directories remain ignored by Git.
 
 Run the local workflow DAG when the ClearML UI should show the audit, quick
 training, and evaluation steps as a pipeline without using a ClearML Agent queue:
