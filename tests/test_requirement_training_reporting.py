@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
 from scripts.requirement_model.clearml_tracking import ClearMlTracker
 from scripts.requirement_model.train import (
+    DEFAULT_OUTPUT_DIR,
+    QUICK_OUTPUT_DIR,
     ConvergenceSettings,
     EpochMetrics,
     build_label_map_rows,
@@ -16,6 +19,7 @@ from scripts.requirement_model.train import (
     build_training_report,
     is_metric_improved,
     report_epoch_metrics_to_clearml,
+    resolve_training_output_dir,
     should_stop_for_convergence,
 )
 
@@ -119,6 +123,32 @@ def test_should_stop_for_convergence_respects_min_epochs_and_patience() -> None:
     assert not should_stop_for_convergence(2, 1, settings)
     assert should_stop_for_convergence(3, 1, settings)
     assert not should_stop_for_convergence(3, 2, settings)
+
+
+def test_resolve_training_output_dir_uses_quick_default_only_for_cli_smoke() -> None:
+    """
+    Verify quick training keeps explicit caller output directories.
+    """
+    explicit_dir = Path("models/requirement_model/hpo/run/trial-001")
+
+    assert (
+        resolve_training_output_dir(
+            argparse.Namespace(quick=True, output_dir=DEFAULT_OUTPUT_DIR)
+        )
+        == QUICK_OUTPUT_DIR
+    )
+    assert (
+        resolve_training_output_dir(
+            argparse.Namespace(quick=True, output_dir=explicit_dir)
+        )
+        == explicit_dir
+    )
+    assert (
+        resolve_training_output_dir(
+            argparse.Namespace(quick=False, output_dir=DEFAULT_OUTPUT_DIR)
+        )
+        == DEFAULT_OUTPUT_DIR
+    )
 
 
 def test_build_training_report_records_convergence_history(tmp_path: Path) -> None:

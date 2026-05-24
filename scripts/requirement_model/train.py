@@ -32,6 +32,7 @@ from scripts.requirement_model.schema import (
 
 DEFAULT_DATA_DIR = Path("data/requirement_model")
 DEFAULT_OUTPUT_DIR = Path("models/requirement_model/latest")
+QUICK_OUTPUT_DIR = Path("models/requirement_model/quick")
 DEFAULT_MODEL_NAME = "distilbert-base-multilingual-cased"
 QUICK_MODEL_NAME = "sshleifer/tiny-distilbert-base-cased"
 DEFAULT_CONVERGENCE_METRIC = "macro_f1"
@@ -313,6 +314,21 @@ def load_validation_records(
     return load_jsonl(data_dir / f"{split_name}.jsonl")
 
 
+def resolve_training_output_dir(args: argparse.Namespace) -> Path:
+    """
+    Resolve the artifact directory for a training run.
+
+    Args:
+        args: The parsed training arguments.
+
+    Returns:
+        The directory where model artifacts should be written.
+    """
+    if args.quick and args.output_dir == DEFAULT_OUTPUT_DIR:
+        return QUICK_OUTPUT_DIR
+    return args.output_dir
+
+
 def is_metric_improved(
     metric_value: float, best_metric_value: float | None, min_delta: float
 ) -> bool:
@@ -483,9 +499,7 @@ def train_model(
     active_tracker = tracker or ClearMlTracker()
     torch.manual_seed(42174)
     model_name = QUICK_MODEL_NAME if args.quick else args.model_name
-    output_dir = (
-        Path("models/requirement_model/quick") if args.quick else args.output_dir
-    )
+    output_dir = resolve_training_output_dir(args)
     convergence_settings = build_convergence_settings(args)
     records = load_training_records(args.data_dir, args.quick)
     validation_records = load_validation_records(

@@ -353,11 +353,11 @@ def train_and_evaluate_trial(
     """
     scoped_tracker = ScopedClearMlTracker(tracker, trial_config.trial_id)
     training_args = build_training_args(args, trial_config, output_dir)
-    train_model(training_args, scoped_tracker)
-    training_report = load_training_report(output_dir)
+    trained_output_dir = train_model(training_args, scoped_tracker)
+    training_report = load_training_report(trained_output_dir)
     metrics_by_split, diagnostics_by_split = evaluate_model_splits(
         data_dir=args.data_dir,
-        model_dir=output_dir,
+        model_dir=trained_output_dir,
         max_length=trial_config.max_length,
         device_name=args.device,
         tracker=tracker,
@@ -367,7 +367,7 @@ def train_and_evaluate_trial(
         trial_id=trial_config.trial_id,
         status=TRIAL_STATUS_COMPLETED,
         config=trial_config,
-        output_dir=output_dir,
+        output_dir=trained_output_dir,
         objective_score=extract_objective_score(
             metrics_by_split,
             args.objective_split,
