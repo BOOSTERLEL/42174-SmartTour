@@ -29,6 +29,11 @@ on:
         required: true
         type: boolean
         default: true
+      quick_hpo:
+        description: Use quick smoke training for HPO runs.
+        required: true
+        type: boolean
+        default: true
       device:
         description: Torch device selection for model operations.
         required: true
@@ -182,7 +187,12 @@ jobs:
           PATIENCE: ${{ inputs.patience }}
           MIN_DELTA: ${{ inputs.min_delta }}
           DEVICE: ${{ inputs.device }}
+          QUICK_HPO: ${{ inputs.quick_hpo }}
         run: |
+          QUICK_ARGS=()
+          if [ "$QUICK_HPO" = "true" ]; then
+            QUICK_ARGS=(--quick)
+          fi
           uv run python scripts/requirement_model/hpo.py \
             --run-id "$MODEL_OPS_HPO_RUN_ID" \
             --model-name "$HPO_MODEL_NAME" \
@@ -194,7 +204,8 @@ jobs:
             --min-epochs "$MIN_EPOCHS" \
             --patience "$PATIENCE" \
             --min-delta "$MIN_DELTA" \
-            --device "$DEVICE"
+            --device "$DEVICE" \
+            "${QUICK_ARGS[@]}"
 
       - name: Run HPO with ClearML
         if: ${{ (inputs.operation == 'hpo' || inputs.operation == 'all') && inputs.clearml }}
@@ -209,12 +220,17 @@ jobs:
           PATIENCE: ${{ inputs.patience }}
           MIN_DELTA: ${{ inputs.min_delta }}
           DEVICE: ${{ inputs.device }}
+          QUICK_HPO: ${{ inputs.quick_hpo }}
           CLEARML_API_ACCESS_KEY: ${{ secrets.CLEARML_API_ACCESS_KEY }}
           CLEARML_API_SECRET_KEY: ${{ secrets.CLEARML_API_SECRET_KEY }}
           CLEARML_API_HOST: ${{ secrets.CLEARML_API_HOST }}
           CLEARML_WEB_HOST: ${{ secrets.CLEARML_WEB_HOST }}
           CLEARML_FILES_HOST: ${{ secrets.CLEARML_FILES_HOST }}
         run: |
+          QUICK_ARGS=()
+          if [ "$QUICK_HPO" = "true" ]; then
+            QUICK_ARGS=(--quick)
+          fi
           uv run python scripts/requirement_model/hpo.py \
             --run-id "$MODEL_OPS_HPO_RUN_ID" \
             --model-name "$HPO_MODEL_NAME" \
@@ -227,6 +243,7 @@ jobs:
             --patience "$PATIENCE" \
             --min-delta "$MIN_DELTA" \
             --device "$DEVICE" \
+            "${QUICK_ARGS[@]}" \
             --clearml
 
       - name: Compare models
