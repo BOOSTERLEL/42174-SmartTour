@@ -6,6 +6,12 @@ __pycache__
 /AGENTS.md
 /GEMINI.md
 /.logs
-/data
+/data/*
+!/data/requirement_model/
+/data/requirement_model/*
+!/data/requirement_model/train.jsonl
+!/data/requirement_model/validation.jsonl
+!/data/requirement_model/test.jsonl
+!/data/requirement_model/reviewed_test.jsonl
 /docs/plan
 /models/requirement_model
