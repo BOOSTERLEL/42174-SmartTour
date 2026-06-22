@@ -2,6 +2,48 @@
 
 Smartour is a conversational travel planning application. It collects trip requirements through a stateful chat flow, confirms the structured trip brief, generates an itinerary with Google Maps Platform data, and displays the result in a Next.js workspace.
 
+The project includes a Python FastAPI backend, a Next.js frontend, Google Maps integrations, itinerary generation workflows, an operations dashboard, and downloadable trip reports.
+
+## Screenshots
+
+### Main planning workspace
+
+The main workspace supports conversational requirement collection, trip brief confirmation, itinerary generation, route overview, restaurant suggestions, and map-based travel planning.
+
+![Smartour main planning workspace](assets\smartour-main-ui.png)
+
+### Generated itinerary and report
+
+Smartour generates a structured multi-day travel guide and a report view that can be shared or downloaded.
+
+![Smartour generated itinerary and report](assets\smartour-report-view.png)
+
+### Operations dashboard
+
+The admin dashboard tracks users, conversations, itineraries, shared trips, jobs, estimated API costs, Google Maps service usage, and job status distribution.
+
+![Smartour operations dashboard](assets\smartour-admin-dashboard.png)
+
+## What the system does
+
+- Collects natural-language travel requirements through a chat interface.
+- Converts user requirements into a structured trip brief.
+- Confirms missing or uncertain trip details before itinerary generation.
+- Generates multi-day itineraries using Google Maps data.
+- Displays attractions, restaurants, route steps, travel time, and daily themes.
+- Provides an admin dashboard for monitoring jobs, usage, and estimated cost.
+- Supports report-style itinerary output for sharing or review.
+
+## Tech stack
+
+- Backend: Python, FastAPI, Pydantic, SQLite
+- Frontend: Next.js, TypeScript
+- Maps and itinerary data: Google Maps Platform
+- Workflow support: GitHub Actions, ClearML-compatible model workflow scripts
+- Testing and quality checks: pytest, Ruff, mypy, ESLint, TypeScript checks
+
+## Repository structure
+
 The repository contains a Python FastAPI backend and a separate Next.js frontend:
 
 - `src/smartour`: backend API, domain models, services, SQLite persistence, Google Maps integrations, and supervised requirement extraction.
